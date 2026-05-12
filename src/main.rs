@@ -4,34 +4,84 @@ use std::collections::HashMap;
 use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 
-const USAGE: &str = "\
-claudio: Search across Claude Code sessions and resume them.
+mod mv;
+mod switch;
+
+const LOGO: &str = include_str!(concat!(env!("OUT_DIR"), "/logo.ansi"));
+
+const USAGE_TEXT: &str = "\
+claudio: A toolkit for Claude Code sessions.
 
 Usage:
-  claudio <query>
-  claudio \"location history cluster\"
+  claudio <command> [args...]
 
-Requires: Claude Code CLI installed
-";
+Commands:
+  search <query>       Search and resume sessions
+  account-switch       Interactive account switcher
+  account-save         Save current account
+  account-list         List saved accounts
+  account-use <email>  Switch to a specific account
+  mv <from> <to>       Move folder, keep sessions
 
-fn parse_args(args: Vec<String>) -> Option<String> {
-    if args.len() < 2 {
-        return None;
+Options:
+  -h, --help       Show this help";
+
+fn usage() -> String {
+    let text_lines: Vec<&str> = USAGE_TEXT.lines().collect();
+    let logo_lines: Vec<&str> = LOGO.lines().collect();
+    let max_rows = text_lines.len().max(logo_lines.len());
+    let col: usize = 48;
+    let mut out = String::new();
+    for i in 0..max_rows {
+        let text = *text_lines.get(i).unwrap_or(&"");
+        let pad = col.saturating_sub(text.len()).max(2);
+        out.push_str(text);
+        (0..pad).for_each(|_| out.push(' '));
+        if let Some(logo_line) = logo_lines.get(i) {
+            out.push_str(logo_line);
+        }
+        out.push('\n');
     }
-    if args[1] == "-h" || args[1] == "--help" {
-        return None;
-    }
-    Some(args[1..].join(" "))
+    out
 }
 
+const SEARCH_USAGE: &str = "\
+claudio search: Search across Claude Code sessions and resume them.
+
+Usage:
+  claudio search <query>
+  claudio search \"location history cluster\"
+";
+
 fn main() {
-    let query = match parse_args(env::args().collect()) {
-        Some(q) => q,
-        None => {
-            eprint!("{USAGE}");
-            process::exit(0);
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 || args[1] == "-h" || args[1] == "--help" {
+        eprint!("{}", usage());
+        process::exit(0);
+    }
+
+    match args[1].as_str() {
+        "search" => cmd_search(&args[2..]),
+        "mv" => mv::run(&args[2..]),
+        "account-switch" | "account-save" | "account-list" | "account-use" => {
+            switch::run(&args[1..]);
         }
-    };
+        other => {
+            eprintln!("Unknown command: {other}\n");
+            eprint!("{USAGE_TEXT}");
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_search(args: &[String]) {
+    if args.is_empty() || args[0] == "-h" || args[0] == "--help" {
+        eprint!("{SEARCH_USAGE}");
+        process::exit(0);
+    }
+
+    let query = args.join(" ");
 
     let claude_dir = get_claude_dir();
     if !claude_dir.exists() {
@@ -464,23 +514,6 @@ fn resume(session_id: &str, cwd: &str) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_parse_args_with_query() {
-        let args = vec!["claude-search".into(), "hello".into(), "world".into()];
-        assert_eq!(parse_args(args), Some("hello world".to_string()));
-    }
-
-    #[test]
-    fn test_parse_args_help() {
-        let args = vec!["claude-search".into(), "--help".into()];
-        assert_eq!(parse_args(args), None);
-    }
-
-    #[test]
-    fn test_parse_args_no_args() {
-        let args = vec!["claude-search".into()];
-        assert_eq!(parse_args(args), None);
-    }
 
     #[test]
     fn test_discover_sessions() {

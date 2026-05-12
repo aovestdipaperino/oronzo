@@ -1,67 +1,135 @@
-# claude-search
+# claudio
 
-Search across all locally saved Claude Code sessions and resume them with `claude --resume`.
-
-Uses **BM25** to rank sessions by relevance to your query.
-
----
+A toolkit for Claude Code sessions. Search, resume, move, and switch accounts — all from one CLI.
 
 ## Requirements
 
 - Claude Code CLI installed
-
----
+- **macOS**: account commands use Keychain via `security` CLI
+- **Linux**: account commands use libsecret via `secret-tool` (`sudo apt install libsecret-tools` / `sudo dnf install libsecret`)
+- **Windows**: account commands use Credential Manager via PowerShell
 
 ## Installation
 
 ### From source
 
 ```bash
-git clone <url-repo>
-cd claude-search
-cargo build --release
-cp target/release/claude-search ~/.local/bin/
+git clone https://github.com/aovestdipaperino/claudio.git
+cd claudio
+cargo install --path .
 ```
 
-### Verify PATH
+### From GitHub
 
 ```bash
-echo $PATH | grep -q "$HOME/.local/bin" && echo "OK" || echo 'Add to ~/.bashrc: export PATH="$HOME/.local/bin:$PATH"'
+cargo install --git https://github.com/aovestdipaperino/claudio
 ```
 
----
+The binary lands at `~/.cargo/bin/claudio`.
 
-## Usage
+## Commands
+
+### `claudio search <query>`
+
+Search across all locally saved Claude Code sessions using BM25 ranking. Select a result to resume it with `claude --resume`.
 
 ```bash
-claude-search "<query>"
+claudio search "fix auth bug"
+claudio search "location history cluster"
 ```
 
-### Examples
+Results show the first user message, working directory, and relevance score. Enter a number to resume that session in its original directory.
+
+### `claudio mv <from> <to>`
+
+Move a project folder while preserving its Claude Code sessions. Updates the project directory under `~/.claude/projects/` and rewrites `cwd` references in all session files.
 
 ```bash
-claude-search "activity report"
-claude-search "location history cluster"
-claude-search "fix auth bug"
+claudio mv ~/Code/old-name ~/Code/new-name
 ```
 
-### Selection and resume
+Without this, moving a folder would orphan all Claude Code sessions associated with it.
 
-Enter the number of the session you want and press `Enter`. The tool opens Claude Code in the original working directory of the session.
+### `claudio account-switch`
 
----
+Interactive account switcher. Shows the active Claude Code account and lets you pick another saved account to switch to.
+
+```bash
+claudio account-switch
+```
+
+### `claudio account-save`
+
+Save the currently logged-in Claude Code account as a named profile. Stores OAuth credentials in the macOS Keychain and account metadata in `~/.claude-switcher/accounts/`.
+
+```bash
+claudio account-save
+```
+
+### `claudio account-list`
+
+List all saved account profiles, marking the currently active one.
+
+```bash
+claudio account-list
+```
+
+### `claudio account-use <email>`
+
+Switch to a saved account non-interactively. Useful in scripts.
+
+```bash
+claudio account-use user@example.com
+```
+
+### First-time account setup
+
+1. You're logged in as account A — run `claudio account-save`
+2. In Claude Code, run `/logout` then `/login` with account B
+3. Run `claudio account-save` again
+4. From now on, use `claudio account-switch` to swap between them
+
+After switching, restart Claude Code if it's already running.
 
 ## How it works
 
-See [ALGORITHM.md](ALGORITHM.md) for a detailed description of the algorithms used.
+### Search
 
----
+Sessions are stored as `.jsonl` files in `~/.claude/projects/`. The tool extracts user messages from each session, builds a BM25 index, and ranks results against your query. The index is cached at `~/.cache/claude-search/index.json` and auto-refreshed when sessions change.
+
+See [ALGORITHM.md](ALGORITHM.md) for details on the scoring algorithm.
+
+### Move
+
+The `mv` command does three things atomically:
+1. Moves the folder on disk
+2. Renames the `~/.claude/projects/<encoded-path>` directory
+3. Rewrites `cwd` fields in all JSONL session files (including subagent files)
+
+### Account switching
+
+Account metadata (email, display name, OAuth account info) is saved as JSON files in `~/.claude-switcher/accounts/`. OAuth credentials are stored in the OS credential store:
+
+| Platform | Credential backend |
+|---|---|
+| macOS | Keychain (`security` CLI) |
+| Linux | libsecret / GNOME Keyring (`secret-tool` CLI) |
+| Windows | Credential Manager (PowerShell P/Invoke) |
+
+Switching swaps both the stored credential and `~/.claude.json` fields.
+
+Based on [claude-code-switch](https://github.com/aovestdipaperino/claude-code-switch).
 
 ## Cache
 
-The session index is saved to `~/.cache/claude-search/index.json` and automatically updated only for new or modified sessions.
+The session search index is saved to `~/.cache/claude-search/index.json`. Only new or modified sessions are re-parsed.
 
 To force a full re-index:
+
 ```bash
 rm ~/.cache/claude-search/index.json
 ```
+
+## License
+
+[MIT](LICENSE)
