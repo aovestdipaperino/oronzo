@@ -1,0 +1,2 @@
+{"type":"user","message":{"content":"fix the bug in auth"},"cwd":"/tmp/proj_b"}
+{"type":"user","message":{"content":[{"type":"text","text":"also check the tests"}]}}
