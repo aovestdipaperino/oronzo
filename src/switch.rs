@@ -313,6 +313,8 @@ struct Profile {
     email: String,
     #[serde(default, rename = "displayName")]
     display_name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    alias: String,
     #[serde(default, rename = "oauthAccount")]
     oauth_account: Value,
     #[serde(default, rename = "userID")]
@@ -379,7 +381,7 @@ fn name_or_email<'a>(name: &'a str, email: &'a str) -> &'a str {
     if name.is_empty() { email } else { name }
 }
 
-fn save_current_account(paths: &Paths) {
+fn save_current_account(paths: &Paths, alias: Option<&str>) {
     let account = get_current_account(paths);
     let email = account
         .get("emailAddress")
@@ -425,6 +427,7 @@ fn save_current_account(paths: &Paths) {
     let profile = Profile {
         email: email.clone(),
         display_name: display_name.clone(),
+        alias: alias.unwrap_or("").to_string(),
         oauth_account: account,
         user_id,
     };
@@ -448,7 +451,11 @@ fn save_current_account(paths: &Paths) {
     }
 
     let name = name_or_email(&display_name, &email);
-    println!("{GREEN}Saved:{NC} {BOLD}{email}{NC} ({name})");
+    if let Some(alias) = alias {
+        println!("{GREEN}Saved:{NC} {BOLD}{email}{NC} ({name}) as {CYAN}{alias}{NC}");
+    } else {
+        println!("{GREEN}Saved:{NC} {BOLD}{email}{NC} ({name})");
+    }
 }
 
 fn switch_to_account(paths: &Paths, profile: &Profile) {
@@ -494,7 +501,7 @@ fn cmd_list(paths: &Paths) {
 
     if saved.is_empty() {
         println!(
-            "{YELLOW}No accounts saved. Run{NC} {BOLD}claudio account-save{NC} {YELLOW}to save the current account.{NC}"
+            "{YELLOW}No accounts saved. Run{NC} {BOLD}oronzo account-save{NC} {YELLOW}to save the current account.{NC}"
         );
         return;
     }
@@ -506,8 +513,13 @@ fn cmd_list(paths: &Paths) {
         } else {
             String::new()
         };
+        let alias_tag = if acc.alias.is_empty() {
+            String::new()
+        } else {
+            format!(" [{CYAN}{}{NC}]", acc.alias)
+        };
         println!(
-            "  - {BOLD}{}{NC} ({}){marker}",
+            "  - {BOLD}{}{NC} ({}){alias_tag}{marker}",
             acc.email, acc.display_name
         );
     }
@@ -517,7 +529,7 @@ fn cmd_list(paths: &Paths) {
 fn print_setup_hint(current_email: &str, saved: &[Profile]) {
     if !saved.iter().any(|a| a.email == current_email) {
         println!(
-            "  {DIM}Tip: run {BOLD}claudio account-save{NC}{DIM} to save the current account.{NC}"
+            "  {DIM}Tip: run {BOLD}oronzo account-save{NC}{DIM} to save the current account.{NC}"
         );
     }
     println!();
@@ -548,14 +560,20 @@ fn interactive_switch(paths: &Paths) {
     println!("\n{BOLD}Claude Code — Account Switcher{NC}");
     println!("{}", "-".repeat(42));
 
+    let saved = list_saved_accounts(&paths.accounts_dir);
+
     if current_email.is_empty() {
         println!("  {YELLOW}No account currently active{NC}");
     } else {
         let name = name_or_email(&current_display, &current_email);
-        println!("  Active:  {CYAN}{BOLD}{current_email}{NC} ({name})");
+        let alias_tag = saved
+            .iter()
+            .find(|a| a.email == current_email)
+            .filter(|a| !a.alias.is_empty())
+            .map(|a| format!(" [{CYAN}{}{NC}]", a.alias))
+            .unwrap_or_default();
+        println!("  Active:  {CYAN}{BOLD}{current_email}{NC} ({name}){alias_tag}");
     }
-
-    let saved = list_saved_accounts(&paths.accounts_dir);
     let others: Vec<&Profile> = saved.iter().filter(|a| a.email != current_email).collect();
 
     println!("\n  Other saved accounts:");
@@ -569,7 +587,12 @@ fn interactive_switch(paths: &Paths) {
     for (i, acc) in others.iter().enumerate() {
         let n = i + 1;
         let name = name_or_email(&acc.display_name, &acc.email);
-        println!("  {BOLD}[{n}]{NC} {} ({name})", acc.email);
+        let alias_tag = if acc.alias.is_empty() {
+            String::new()
+        } else {
+            format!(" [{CYAN}{}{NC}]", acc.alias)
+        };
+        println!("  {BOLD}[{n}]{NC} {} ({name}){alias_tag}", acc.email);
     }
     println!();
     print_setup_hint(&current_email, &saved);
@@ -625,19 +648,22 @@ pub fn run(args: &[String]) {
 
     match args[0].as_str() {
         "account-switch" => interactive_switch(&paths),
-        "account-save" => save_current_account(&paths),
+        "account-save" => save_current_account(&paths, args.get(1).map(String::as_str)),
         "account-list" => cmd_list(&paths),
         "account-use" => {
-            let Some(email) = args.get(1) else {
-                eprintln!("{RED}Usage: claudio account-use <email>{NC}");
+            let Some(target) = args.get(1) else {
+                eprintln!("{RED}Usage: oronzo account-use <email|alias>{NC}");
                 std::process::exit(1);
             };
             let saved = list_saved_accounts(&paths.accounts_dir);
-            if let Some(profile) = saved.iter().find(|a| &a.email == email) {
+            if let Some(profile) = saved
+                .iter()
+                .find(|a| a.email == *target || (!a.alias.is_empty() && a.alias == *target))
+            {
                 switch_to_account(&paths, profile);
             } else {
                 eprintln!(
-                    "{RED}Account '{email}' not found. Run 'claudio account-list' to see saved accounts.{NC}"
+                    "{RED}Account '{target}' not found. Run 'oronzo account-list' to see saved accounts.{NC}"
                 );
                 std::process::exit(1);
             }

@@ -60,12 +60,15 @@ Interactive account switcher. Shows the active Claude Code account and lets you 
 oronzo account-switch
 ```
 
-### `oronzo account-save`
+### `oronzo account-save [alias]`
 
-Save the currently logged-in Claude Code account as a named profile. Stores OAuth credentials in the macOS Keychain and account metadata in `~/.claude-switcher/accounts/`.
+Save the currently logged-in Claude Code account as a named profile. Stores OAuth credentials in the OS credential store and account metadata in `~/.claude-switcher/accounts/`.
+
+An optional alias lets you refer to the account by a short name (e.g. `work`, `personal`) instead of the full email.
 
 ```bash
 oronzo account-save
+oronzo account-save work
 ```
 
 ### `oronzo account-list`
@@ -76,20 +79,21 @@ List all saved account profiles, marking the currently active one.
 oronzo account-list
 ```
 
-### `oronzo account-use <email>`
+### `oronzo account-use <email|alias>`
 
-Switch to a saved account non-interactively. Useful in scripts.
+Switch to a saved account non-interactively. Accepts an email or alias. Useful in scripts.
 
 ```bash
 oronzo account-use user@example.com
+oronzo account-use work
 ```
 
 ### First-time account setup
 
-1. You're logged in as account A — run `oronzo account-save`
+1. You're logged in as account A — run `oronzo account-save work`
 2. In Claude Code, run `/logout` then `/login` with account B
-3. Run `oronzo account-save` again
-4. From now on, use `oronzo account-switch` to swap between them
+3. Run `oronzo account-save personal`
+4. From now on, use `oronzo account-switch` or `oronzo account-use work` to swap between them
 
 After switching, restart Claude Code if it's already running.
 
