@@ -10,11 +10,14 @@ Usage:
   claudio mv <from> <to>
 ";
 
-fn get_claude_projects_dir() -> PathBuf {
+fn get_claude_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".claude")
-        .join("projects")
+}
+
+fn get_claude_projects_dir() -> PathBuf {
+    get_claude_dir().join("projects")
 }
 
 fn path_to_project_dirname(path: &Path) -> String {
@@ -116,13 +119,33 @@ pub fn run(args: &[String]) {
         return;
     }
 
-    if let Err(e) = fs::rename(&old_project_dir, &new_project_dir) {
+    if new_project_dir.exists() {
+        // Destination project dir already exists — merge contents into it
+        if let Ok(entries) = fs::read_dir(&old_project_dir) {
+            for entry in entries.flatten() {
+                let dest = new_project_dir.join(entry.file_name());
+                if let Err(e) = fs::rename(entry.path(), &dest) {
+                    eprintln!(
+                        "Warning: could not move '{}': {e}",
+                        entry.file_name().to_string_lossy()
+                    );
+                }
+            }
+        }
+        let _ = fs::remove_dir(&old_project_dir); // remove if now empty
+    } else if let Err(e) = fs::rename(&old_project_dir, &new_project_dir) {
         eprintln!("Error renaming project dir: {e}");
         process::exit(1);
     }
 
     // Rewrite cwd in all session files
     rewrite_sessions(&new_project_dir, &from_str, &to_str);
+
+    // Rewrite project path in prompt history so cursor up/down works
+    let history_file = get_claude_dir().join("history.jsonl");
+    if history_file.exists() {
+        rewrite_cwd_in_jsonl(&history_file, &from_str, &to_str);
+    }
 
     eprintln!("Updated Claude sessions.");
 }
