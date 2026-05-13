@@ -1,3 +1,5 @@
+<img src="src/resources/logo.png" align="right" width="120">
+
 # oronzo
 
 A toolkit for Claude Code sessions. Search, resume, move, and switch accounts — all from one CLI.
