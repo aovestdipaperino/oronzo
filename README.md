@@ -1,4 +1,4 @@
-# claudio
+# oronzo
 
 A toolkit for Claude Code sessions. Search, resume, move, and switch accounts — all from one CLI.
 
@@ -14,80 +14,80 @@ A toolkit for Claude Code sessions. Search, resume, move, and switch accounts �
 ### From source
 
 ```bash
-git clone https://github.com/aovestdipaperino/claudio.git
-cd claudio
+git clone https://github.com/aovestdipaperino/oronzo.git
+cd oronzo
 cargo install --path .
 ```
 
 ### From GitHub
 
 ```bash
-cargo install --git https://github.com/aovestdipaperino/claudio
+cargo install --git https://github.com/aovestdipaperino/oronzo
 ```
 
-The binary lands at `~/.cargo/bin/claudio`.
+The binary lands at `~/.cargo/bin/oronzo`.
 
 ## Commands
 
-### `claudio search <query>`
+### `oronzo search <query>`
 
 Search across all locally saved Claude Code sessions using BM25 ranking. Select a result to resume it with `claude --resume`.
 
 ```bash
-claudio search "fix auth bug"
-claudio search "location history cluster"
+oronzo search "fix auth bug"
+oronzo search "location history cluster"
 ```
 
 Results show the first user message, working directory, and relevance score. Enter a number to resume that session in its original directory.
 
-### `claudio mv <from> <to>`
+### `oronzo mv <from> <to>`
 
 Move a project folder while preserving its Claude Code sessions. Updates the project directory under `~/.claude/projects/`, rewrites `cwd` references in all session files, and updates prompt history so arrow-key recall works in the new location.
 
 ```bash
-claudio mv ~/Code/old-name ~/Code/new-name
+oronzo mv ~/Code/old-name ~/Code/new-name
 ```
 
 Without this, moving a folder would orphan all Claude Code sessions associated with it.
 
-### `claudio account-switch`
+### `oronzo account-switch`
 
 Interactive account switcher. Shows the active Claude Code account and lets you pick another saved account to switch to.
 
 ```bash
-claudio account-switch
+oronzo account-switch
 ```
 
-### `claudio account-save`
+### `oronzo account-save`
 
 Save the currently logged-in Claude Code account as a named profile. Stores OAuth credentials in the macOS Keychain and account metadata in `~/.claude-switcher/accounts/`.
 
 ```bash
-claudio account-save
+oronzo account-save
 ```
 
-### `claudio account-list`
+### `oronzo account-list`
 
 List all saved account profiles, marking the currently active one.
 
 ```bash
-claudio account-list
+oronzo account-list
 ```
 
-### `claudio account-use <email>`
+### `oronzo account-use <email>`
 
 Switch to a saved account non-interactively. Useful in scripts.
 
 ```bash
-claudio account-use user@example.com
+oronzo account-use user@example.com
 ```
 
 ### First-time account setup
 
-1. You're logged in as account A — run `claudio account-save`
+1. You're logged in as account A — run `oronzo account-save`
 2. In Claude Code, run `/logout` then `/login` with account B
-3. Run `claudio account-save` again
-4. From now on, use `claudio account-switch` to swap between them
+3. Run `oronzo account-save` again
+4. From now on, use `oronzo account-switch` to swap between them
 
 After switching, restart Claude Code if it's already running.
 
