@@ -97,6 +97,8 @@ After switching, restart Claude Code if it's already running.
 
 Sessions are stored as `.jsonl` files in `~/.claude/projects/`. The tool extracts user messages from each session, builds a BM25 index, and ranks results against your query. The index is cached at `~/.cache/claude-search/index.json` and auto-refreshed when sessions change.
 
+Based on [claude-search](https://github.com/sangelastro/claude-search).
+
 See [ALGORITHM.md](ALGORITHM.md) for details on the scoring algorithm.
 
 ### Move
@@ -119,7 +121,7 @@ Account metadata (email, display name, OAuth account info) is saved as JSON file
 
 Switching swaps both the stored credential and `~/.claude.json` fields.
 
-Based on [claude-code-switch](https://github.com/aovestdipaperino/claude-code-switch).
+Based on [claude-code-switcher](https://github.com/eddya92/claude-code-switcher).
 
 ## Cache
 
