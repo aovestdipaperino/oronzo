@@ -42,7 +42,7 @@ Results show the first user message, working directory, and relevance score. Ent
 
 ### `claudio mv <from> <to>`
 
-Move a project folder while preserving its Claude Code sessions. Updates the project directory under `~/.claude/projects/` and rewrites `cwd` references in all session files.
+Move a project folder while preserving its Claude Code sessions. Updates the project directory under `~/.claude/projects/`, rewrites `cwd` references in all session files, and updates prompt history so arrow-key recall works in the new location.
 
 ```bash
 claudio mv ~/Code/old-name ~/Code/new-name
@@ -101,10 +101,11 @@ See [ALGORITHM.md](ALGORITHM.md) for details on the scoring algorithm.
 
 ### Move
 
-The `mv` command does three things atomically:
+The `mv` command does four things:
 1. Moves the folder on disk
-2. Renames the `~/.claude/projects/<encoded-path>` directory
+2. Renames the `~/.claude/projects/<encoded-path>` directory (merging into an existing one if present)
 3. Rewrites `cwd` fields in all JSONL session files (including subagent files)
+4. Rewrites `cwd` in `~/.claude/history.jsonl` so prompt history reflects the new path
 
 ### Account switching
 
