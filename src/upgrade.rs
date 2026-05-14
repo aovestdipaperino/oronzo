@@ -210,7 +210,10 @@ fn extract_targz(data: &[u8], bin_name: &str, dest: &Path) -> Result<(), String>
     let gz = GzDecoder::new(Cursor::new(data));
     let mut archive = Archive::new(gz);
 
-    for entry in archive.entries().map_err(|e| format!("archive open failed: {e}"))? {
+    for entry in archive
+        .entries()
+        .map_err(|e| format!("archive open failed: {e}"))?
+    {
         let mut entry = entry.map_err(|e| format!("archive read failed: {e}"))?;
         let path = entry
             .path()
@@ -229,8 +232,7 @@ fn extract_targz(data: &[u8], bin_name: &str, dest: &Path) -> Result<(), String>
                     .map_err(|e| format!("stat failed: {e}"))?
                     .permissions();
                 perms.set_mode(0o755);
-                std::fs::set_permissions(dest, perms)
-                    .map_err(|e| format!("chmod failed: {e}"))?;
+                std::fs::set_permissions(dest, perms).map_err(|e| format!("chmod failed: {e}"))?;
             }
 
             return Ok(());
@@ -379,8 +381,7 @@ fn replace_for_brew(new_exe: &Path, new_version: &str) -> Result<(), String> {
                 let receipt = new_version_dir.join("INSTALL_RECEIPT.json");
                 if receipt.exists() {
                     if let Ok(text) = std::fs::read_to_string(&receipt) {
-                        let _ =
-                            std::fs::write(&receipt, text.replace(&old_version, new_version));
+                        let _ = std::fs::write(&receipt, text.replace(&old_version, new_version));
                     }
                 }
             }

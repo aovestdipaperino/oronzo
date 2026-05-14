@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::env;
 use std::process;
-use std::collections::HashMap;
 use std::time::SystemTime;
-use serde::{Deserialize, Serialize};
 
 mod mv;
 mod switch;
@@ -11,7 +11,8 @@ mod upgrade;
 const LOGO: &str = include_str!(concat!(env!("OUT_DIR"), "/logo.ansi"));
 
 fn usage_text() -> String {
-    format!("\
+    format!(
+        "\
 oronzo {}: A toolkit for Claude Code sessions.
 
 Usage:
@@ -28,7 +29,9 @@ Commands:
 
 Options:
   -h, --help       Show this help
-  -V, --version    Show version", env!("CARGO_PKG_VERSION"))
+  -V, --version    Show version",
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 fn usage() -> String {
@@ -102,7 +105,10 @@ fn cmd_search(args: &[String]) {
 
     let claude_dir = get_claude_dir();
     if !claude_dir.exists() {
-        eprintln!("Claude sessions directory not found: {}", claude_dir.display());
+        eprintln!(
+            "Claude sessions directory not found: {}",
+            claude_dir.display()
+        );
         process::exit(1);
     }
 
@@ -140,19 +146,23 @@ fn cmd_search(args: &[String]) {
         } else {
             let extracted = extract_session(&sf.path);
             let cwd = if extracted.cwd.is_empty() {
-                sf.path.parent()
+                sf.path
+                    .parent()
                     .and_then(|p| p.to_str())
                     .unwrap_or("")
                     .to_string()
             } else {
                 extracted.cwd.clone()
             };
-            cache.set(key, CacheEntry {
-                mtime,
-                text: extracted.text.clone(),
-                cwd: cwd.clone(),
-                first_msg: extracted.first_msg.clone(),
-            });
+            cache.set(
+                key,
+                CacheEntry {
+                    mtime,
+                    text: extracted.text.clone(),
+                    cwd: cwd.clone(),
+                    first_msg: extracted.first_msg.clone(),
+                },
+            );
             updated = true;
             if !extracted.text.trim().is_empty() {
                 sessions.push(Session {
@@ -191,7 +201,11 @@ fn cmd_search(args: &[String]) {
         })
         .collect();
 
-    ranked.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    ranked.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     ranked.truncate(MAX_RESULTS);
 
     if ranked.is_empty() {
@@ -211,8 +225,8 @@ fn cmd_search(args: &[String]) {
     }
 }
 
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 struct SessionFile {
     id: String,
@@ -250,7 +264,8 @@ fn discover_sessions(claude_dir: &Path) -> Vec<SessionFile> {
         for file_entry in files.flatten() {
             let path = file_entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
-                let id = path.file_stem()
+                let id = path
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string();
@@ -273,20 +288,19 @@ struct ExtractedSession {
 fn content_to_text(content: &serde_json::Value) -> String {
     match content {
         serde_json::Value::String(s) => s.trim().to_string(),
-        serde_json::Value::Array(arr) => {
-            arr.iter()
-                .filter_map(|block| {
-                    if block.get("type")?.as_str()? == "text" {
-                        block.get("text")?.as_str().map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" ")
-                .trim()
-                .to_string()
-        }
+        serde_json::Value::Array(arr) => arr
+            .iter()
+            .filter_map(|block| {
+                if block.get("type")?.as_str()? == "text" {
+                    block.get("text")?.as_str().map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim()
+            .to_string(),
         _ => String::new(),
     }
 }
@@ -297,7 +311,11 @@ fn extract_session(filepath: &Path) -> ExtractedSession {
     let mut first_msg = String::new();
 
     let Ok(file) = fs::File::open(filepath) else {
-        return ExtractedSession { text: String::new(), cwd, first_msg };
+        return ExtractedSession {
+            text: String::new(),
+            cwd,
+            first_msg,
+        };
     };
     let reader = BufReader::new(file);
 
@@ -314,7 +332,8 @@ fn extract_session(filepath: &Path) -> ExtractedSession {
             continue;
         }
         let text = content_to_text(
-            obj.pointer("/message/content").unwrap_or(&serde_json::Value::Null),
+            obj.pointer("/message/content")
+                .unwrap_or(&serde_json::Value::Null),
         );
         if !text.is_empty() {
             if first_msg.is_empty() {
@@ -369,7 +388,10 @@ impl Cache {
         if let Some(parent) = self.path.parent() {
             let _ = fs::create_dir_all(parent);
         }
-        let _ = fs::write(&self.path, serde_json::to_string(&self.entries).unwrap_or_default());
+        let _ = fs::write(
+            &self.path,
+            serde_json::to_string(&self.entries).unwrap_or_default(),
+        );
     }
 
     fn get(&self, key: &str, mtime: f64) -> Option<&CacheEntry> {
@@ -436,8 +458,8 @@ fn score_bm25(query: &str, corpus: &[String]) -> Vec<f64> {
                 let term_df = df.get(qt.as_str()).copied().unwrap_or(0.0);
                 let term_tf = tf.get(qt.as_str()).copied().unwrap_or(0.0);
                 let idf = ((n - term_df + 0.5) / (term_df + 0.5) + 1.0).ln();
-                let tf_component =
-                    (term_tf * (BM25_K1 + 1.0)) / (term_tf + BM25_K1 * (1.0 - BM25_B + BM25_B * dl / avgdl));
+                let tf_component = (term_tf * (BM25_K1 + 1.0))
+                    / (term_tf + BM25_K1 * (1.0 - BM25_B + BM25_B * dl / avgdl));
                 score + idf * tf_component
             })
         })
@@ -453,7 +475,13 @@ struct RankedSession {
     first_msg: String,
 }
 
-fn format_result_line(index: usize, score: f64, first_msg: &str, cwd: &str, session_id: &str) -> String {
+fn format_result_line(
+    index: usize,
+    score: f64,
+    first_msg: &str,
+    cwd: &str,
+    session_id: &str,
+) -> String {
     let label: String = first_msg.chars().take(90).collect();
     let label = label.replace('\n', " ");
     let short_id = if session_id.len() > 8 {
@@ -531,11 +559,10 @@ fn resume(session_id: &str, cwd: &str) {
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_discover_sessions() {
-        let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures");
+        let fixture_dir =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
         let sessions = discover_sessions(&fixture_dir);
         assert_eq!(sessions.len(), 2);
         assert!(sessions.iter().any(|s| s.id == "session1"));
@@ -625,12 +652,15 @@ mod tests {
         let cache_path = tmp.path().join("index.json");
 
         let mut cache = Cache::new(cache_path.clone());
-        cache.entries.insert("/fake/path.jsonl".to_string(), CacheEntry {
-            mtime: 1234567890.0,
-            text: "hello world".to_string(),
-            cwd: "/tmp".to_string(),
-            first_msg: "hello".to_string(),
-        });
+        cache.entries.insert(
+            "/fake/path.jsonl".to_string(),
+            CacheEntry {
+                mtime: 1234567890.0,
+                text: "hello world".to_string(),
+                cwd: "/tmp".to_string(),
+                first_msg: "hello".to_string(),
+            },
+        );
         cache.save();
 
         let loaded = Cache::new(cache_path);

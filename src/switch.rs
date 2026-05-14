@@ -44,11 +44,13 @@ fn cred_read(service: &str, account: Option<&str>) -> Option<String> {
     let out = if let Some(acct) = account {
         Command::new("security")
             .args(["find-generic-password", "-s", service, "-a", acct, "-g"])
-            .output().ok()?
+            .output()
+            .ok()?
     } else {
         Command::new("security")
             .args(["find-generic-password", "-l", service, "-g"])
-            .output().ok()?
+            .output()
+            .ok()?
     };
     let mut combined = String::with_capacity(out.stderr.len() + out.stdout.len());
     combined.push_str(&String::from_utf8_lossy(&out.stderr));
@@ -59,7 +61,15 @@ fn cred_read(service: &str, account: Option<&str>) -> Option<String> {
 #[cfg(target_os = "macos")]
 fn cred_write(service: &str, account: &str, password: &str) -> bool {
     Command::new("security")
-        .args(["add-generic-password", "-a", account, "-s", service, "-w", password])
+        .args([
+            "add-generic-password",
+            "-a",
+            account,
+            "-s",
+            service,
+            "-w",
+            password,
+        ])
         .output()
         .is_ok_and(|o| o.status.success())
 }
@@ -97,7 +107,9 @@ fn cred_read(service: &str, account: Option<&str>) -> Option<String> {
 #[cfg(target_os = "linux")]
 fn cred_write(service: &str, account: &str, password: &str) -> bool {
     let child = Command::new("secret-tool")
-        .args(["store", "--label", service, "service", service, "account", account])
+        .args([
+            "store", "--label", service, "service", service, "account", account,
+        ])
         .stdin(std::process::Stdio::piped())
         .spawn();
     match child {
@@ -203,7 +215,8 @@ fn win_escape(s: &str) -> String {
 fn run_ps(script: &str) -> Option<String> {
     let out = Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .output().ok()?;
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None;
     }
@@ -299,12 +312,20 @@ struct Paths {
 
 impl Paths {
     fn resolve() -> io::Result<Self> {
-        let home = dirs::home_dir()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Could not determine home directory"))?;
+        let home = dirs::home_dir().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Could not determine home directory",
+            )
+        })?;
         let switcher_dir = home.join(".claude-switcher");
         let accounts_dir = switcher_dir.join("accounts");
         let claude_json = home.join(".claude.json");
-        Ok(Self { switcher_dir, accounts_dir, claude_json })
+        Ok(Self {
+            switcher_dir,
+            accounts_dir,
+            claude_json,
+        })
     }
 }
 
@@ -409,7 +430,10 @@ fn save_current_account(paths: &Paths, alias: Option<&str>) {
     let claude = match read_claude_json(paths) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("{RED}Error reading {}: {e}{NC}", paths.claude_json.display());
+            eprintln!(
+                "{RED}Error reading {}: {e}{NC}",
+                paths.claude_json.display()
+            );
             std::process::exit(1);
         }
     };
@@ -473,7 +497,10 @@ fn switch_to_account(paths: &Paths, profile: &Profile) {
     let mut claude = match read_claude_json(paths) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("{RED}Error reading {}: {e}{NC}", paths.claude_json.display());
+            eprintln!(
+                "{RED}Error reading {}: {e}{NC}",
+                paths.claude_json.display()
+            );
             std::process::exit(1);
         }
     };
@@ -482,7 +509,10 @@ fn switch_to_account(paths: &Paths, profile: &Profile) {
         obj.insert("userID".into(), profile.user_id.clone());
     }
     if let Err(e) = write_claude_json(paths, &claude) {
-        eprintln!("{RED}Error writing {}: {e}{NC}", paths.claude_json.display());
+        eprintln!(
+            "{RED}Error writing {}: {e}{NC}",
+            paths.claude_json.display()
+        );
         std::process::exit(1);
     }
 

@@ -24,7 +24,8 @@ fn main() {
 
     // Encode back to PNG in memory
     let mut buf = Cursor::new(Vec::new());
-    rgba.write_to(&mut buf, ImageFormat::Png).expect("Failed to encode PNG");
+    rgba.write_to(&mut buf, ImageFormat::Png)
+        .expect("Failed to encode PNG");
 
     let ansi = logo_art::image_to_ansi(buf.get_ref(), 20);
     fs::write(Path::new(&out_dir).join("logo.ansi"), ansi).unwrap();
