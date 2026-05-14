@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.2] - 2026-05-14
+
+### Fixed
+- Replace remaining `claudio` references with `oronzo` in CHANGELOG (#1).
+- Show version in `--help` output (e.g. `oronzo 0.3.2: A toolkit for ...`).
+
+### Added
+- `--version` / `-V` flag to print the current version.
+
 ## [0.3.0] - 2026-05-12
 
 ### Added

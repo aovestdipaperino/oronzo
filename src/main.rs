@@ -10,11 +10,12 @@ mod upgrade;
 
 const LOGO: &str = include_str!(concat!(env!("OUT_DIR"), "/logo.ansi"));
 
-const USAGE_TEXT: &str = "\
-claudio: A toolkit for Claude Code sessions.
+fn usage_text() -> String {
+    format!("\
+oronzo {}: A toolkit for Claude Code sessions.
 
 Usage:
-  claudio <command> [args...]
+  oronzo <command> [args...]
 
 Commands:
   search <query>       Search and resume sessions
@@ -26,13 +27,16 @@ Commands:
   upgrade              Update to the latest version
 
 Options:
-  -h, --help       Show this help";
+  -h, --help       Show this help
+  -V, --version    Show version", env!("CARGO_PKG_VERSION"))
+}
 
 fn usage() -> String {
-    let text_lines: Vec<&str> = USAGE_TEXT.lines().collect();
+    let text = usage_text();
+    let text_lines: Vec<&str> = text.lines().collect();
     let logo_lines: Vec<&str> = LOGO.lines().collect();
     let max_rows = text_lines.len().max(logo_lines.len());
-    let col: usize = 48;
+    let col: usize = text_lines.iter().map(|l: &&str| l.len()).max().unwrap_or(0) + 2;
     let mut out = String::new();
     for i in 0..max_rows {
         let text = *text_lines.get(i).unwrap_or(&"");
@@ -48,11 +52,11 @@ fn usage() -> String {
 }
 
 const SEARCH_USAGE: &str = "\
-claudio search: Search across Claude Code sessions and resume them.
+oronzo search: Search across Claude Code sessions and resume them.
 
 Usage:
-  claudio search <query>
-  claudio search \"location history cluster\"
+  oronzo search <query>
+  oronzo search \"location history cluster\"
 ";
 
 fn main() {
@@ -60,6 +64,11 @@ fn main() {
 
     if args.len() < 2 || args[1] == "-h" || args[1] == "--help" {
         eprint!("{}", usage());
+        process::exit(0);
+    }
+
+    if args[1] == "-V" || args[1] == "--version" {
+        eprintln!("oronzo {}", env!("CARGO_PKG_VERSION"));
         process::exit(0);
     }
 
@@ -77,7 +86,7 @@ fn main() {
         }
         other => {
             eprintln!("Unknown command: {other}\n");
-            eprint!("{USAGE_TEXT}");
+            eprint!("{}", usage_text());
             process::exit(1);
         }
     }
