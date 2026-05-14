@@ -4,20 +4,20 @@
 
 ### Added
 - Multi-command CLI structure with subcommand dispatch.
-- `claudio search <query>` — search and resume sessions (previously the default behavior).
-- `claudio mv <from> <to>` — move a folder while preserving Claude Code sessions.
-- `claudio account-switch` — interactive account switcher (macOS only).
-- `claudio account-save` — save current account credentials to a profile.
-- `claudio account-list` — list saved account profiles.
-- `claudio account-use <email>` — switch to a saved account non-interactively.
+- `oronzo search <query>` — search and resume sessions (previously the default behavior).
+- `oronzo mv <from> <to>` — move a folder while preserving Claude Code sessions.
+- `oronzo account-switch` — interactive account switcher (macOS only).
+- `oronzo account-save` — save current account credentials to a profile.
+- `oronzo account-list` — list saved account profiles.
+- `oronzo account-use <email>` — switch to a saved account non-interactively.
 
 ### Changed
-- `claudio <query>` no longer works — use `claudio search <query>` instead.
+- `oronzo <query>` no longer works — use `oronzo search <query>` instead.
 
 ## [0.2.0] - 2026-05-12
 
 ### Added
-- Renamed project from `claude-search` to `claudio`.
+- Renamed project from `claude-search` to `oronzo`.
 
 ## [0.1.0] - 2026-05-12
 
