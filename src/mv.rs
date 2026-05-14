@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 const USAGE: &str = "\
-claudio mv: Move a folder while preserving Claude Code sessions.
+oronzo mv: Move a folder while preserving Claude Code sessions.
 
 Usage:
-  claudio mv <from> <to>
+  oronzo mv <from> <to>
 ";
 
 fn get_claude_dir() -> PathBuf {

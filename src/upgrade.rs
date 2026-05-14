@@ -1,6 +1,6 @@
-//! Self-update for the claudio binary.
+//! Self-update for the oronzo binary.
 //!
-//! `claudio upgrade` downloads the latest release from GitHub, extracts the
+//! `oronzo upgrade` downloads the latest release from GitHub, extracts the
 //! binary, and replaces the running executable. Install-method-aware: handles
 //! Homebrew Cellar symlinks and Scoop version directories.
 //!
@@ -10,9 +10,9 @@
 use std::path::Path;
 use std::time::Duration;
 
-const GITHUB_REPO: &str = "aovestdipaperino/claudio";
+const GITHUB_REPO: &str = "aovestdipaperino/oronzo";
 const GITHUB_RELEASES_URL: &str =
-    "https://api.github.com/repos/aovestdipaperino/claudio/releases/latest";
+    "https://api.github.com/repos/aovestdipaperino/oronzo/releases/latest";
 
 // ── Version check (called on every command) ────────────────────────────
 
@@ -25,7 +25,7 @@ pub fn check_for_update() {
     };
     if is_newer_version(current, &latest) {
         eprintln!(
-            "\x1b[33mclaudio v{latest} available\x1b[0m (current: v{current}) — run `claudio upgrade`"
+            "\x1b[33moronzo v{latest} available\x1b[0m (current: v{current}) — run `oronzo upgrade`"
         );
     }
 }
@@ -44,7 +44,7 @@ fn fetch_latest_version() -> Option<String> {
 
     let release: Release = agent
         .get(GITHUB_RELEASES_URL)
-        .header("User-Agent", "claudio")
+        .header("User-Agent", "oronzo")
         .call()
         .ok()?
         .body_mut()
@@ -100,7 +100,7 @@ fn detect_install_method() -> InstallMethod {
 fn asset_name(version: &str) -> String {
     let platform = current_platform();
     let ext = if cfg!(windows) { "zip" } else { "tar.gz" };
-    format!("claudio-v{version}-{platform}.{ext}")
+    format!("oronzo-v{version}-{platform}.{ext}")
 }
 
 fn current_platform() -> &'static str {
@@ -138,7 +138,7 @@ fn fetch_asset_url(tag: &str, expected_asset: &str) -> Result<String, String> {
 
     let release: Release = agent
         .get(&url)
-        .header("User-Agent", "claudio")
+        .header("User-Agent", "oronzo")
         .call()
         .map_err(|e| format!("failed to reach GitHub: {e}"))?
         .body_mut()
@@ -161,7 +161,7 @@ fn fetch_asset_url(tag: &str, expected_asset: &str) -> Result<String, String> {
 
 fn download_and_extract(url: &str, bin_name: &str) -> Result<std::path::PathBuf, String> {
     let tmp_path = std::env::temp_dir().join(format!(
-        "claudio_upgrade_{}{}",
+        "oronzo_upgrade_{}{}",
         std::process::id(),
         if cfg!(windows) { ".exe" } else { "" }
     ));
@@ -178,7 +178,7 @@ fn download_and_extract(url: &str, bin_name: &str) -> Result<std::path::PathBuf,
         let mut buf = Vec::new();
         agent
             .get(url)
-            .header("User-Agent", "claudio")
+            .header("User-Agent", "oronzo")
             .call()
             .map_err(|e| format!("download failed: {e}"))?
             .body_mut()
@@ -301,7 +301,7 @@ fn install_binary(src: &Path, target: &Path) -> Result<(), String> {
     let dir = target
         .parent()
         .ok_or_else(|| "cannot determine target directory".to_string())?;
-    let temp = dir.join(format!(".claudio_upgrade_{}", std::process::id()));
+    let temp = dir.join(format!(".oronzo_upgrade_{}", std::process::id()));
 
     std::fs::copy(src, &temp).map_err(|e| format!("cannot copy new binary: {e}"))?;
 
@@ -546,9 +546,9 @@ pub fn run() {
     };
 
     let bin_name = if cfg!(windows) {
-        "claudio.exe"
+        "oronzo.exe"
     } else {
-        "claudio"
+        "oronzo"
     };
 
     let tmp = match download_and_extract(&asset_url, bin_name) {
@@ -606,9 +606,9 @@ mod tests {
         let name = asset_name("0.4.0");
         let platform = current_platform();
         if cfg!(windows) {
-            assert_eq!(name, format!("claudio-v0.4.0-{platform}.zip"));
+            assert_eq!(name, format!("oronzo-v0.4.0-{platform}.zip"));
         } else {
-            assert_eq!(name, format!("claudio-v0.4.0-{platform}.tar.gz"));
+            assert_eq!(name, format!("oronzo-v0.4.0-{platform}.tar.gz"));
         }
     }
 }
