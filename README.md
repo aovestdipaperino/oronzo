@@ -13,6 +13,19 @@ A toolkit for Claude Code sessions. Search, resume, move, and switch accounts â€
 
 ## Installation
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew install aovestdipaperino/tap/oronzo
+```
+
+### Scoop (Windows)
+
+```powershell
+scoop bucket add aovestdipaperino https://github.com/aovestdipaperino/scoop-bucket
+scoop install oronzo
+```
+
 ### From source
 
 ```bash
