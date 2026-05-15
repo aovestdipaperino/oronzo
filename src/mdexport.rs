@@ -286,6 +286,36 @@ pub fn parse_session(path: &Path) -> Result<Session, std::io::Error> {
     })
 }
 
+pub fn lang_for_path(path: &str) -> &'static str {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    match ext.to_lowercase().as_str() {
+        "rs" => "rust",
+        "py" => "python",
+        "ts" | "tsx" => "typescript",
+        "js" | "jsx" => "javascript",
+        "go" => "go",
+        "rb" => "ruby",
+        "java" => "java",
+        "kt" => "kotlin",
+        "c" | "h" => "c",
+        "cpp" | "hpp" | "cc" | "hh" => "cpp",
+        "sh" | "bash" => "bash",
+        "zsh" => "zsh",
+        "json" => "json",
+        "yaml" | "yml" => "yaml",
+        "toml" => "toml",
+        "md" | "markdown" => "markdown",
+        "html" => "html",
+        "css" => "css",
+        "sql" => "sql",
+        "xml" => "xml",
+        _ => "text",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,5 +437,23 @@ mod tests {
         .unwrap();
         assert!(s.entries.iter().all(|e| e.is_meta));
         assert_eq!(s.meta.message_count, 0);
+    }
+
+    #[test]
+    fn lang_for_extension_maps_known_languages() {
+        assert_eq!(lang_for_path("foo.rs"), "rust");
+        assert_eq!(lang_for_path("/a/b/foo.py"), "python");
+        assert_eq!(lang_for_path("script.sh"), "bash");
+        assert_eq!(lang_for_path("data.json"), "json");
+        assert_eq!(lang_for_path("config.yaml"), "yaml");
+        assert_eq!(lang_for_path("page.tsx"), "typescript");
+        assert_eq!(lang_for_path("page.jsx"), "javascript");
+    }
+
+    #[test]
+    fn lang_for_unknown_extension_is_text() {
+        assert_eq!(lang_for_path("foo.unknownext"), "text");
+        assert_eq!(lang_for_path("noext"), "text");
+        assert_eq!(lang_for_path("/some/dir/"), "text");
     }
 }
