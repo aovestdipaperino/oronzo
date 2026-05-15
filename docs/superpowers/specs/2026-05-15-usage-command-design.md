@@ -72,7 +72,7 @@ Single pass per invocation:
 
 1. **Discover** — reuse `sessions::discover()` from the shared module.
 2. **Parse** — for each `.jsonl`, iterate lines. Keep rows where `type == "assistant"` and `message.usage` exists. Extract: `timestamp`, `message.model`, `message.id`, `requestId`, `message.usage.{input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}`, plus `cwd` and `sessionId`. Decode `timestamp` once into `chrono::DateTime<Utc>`.
-3. **Dedup** — global `HashSet<(String, String)>` keyed on `(message_id, request_id)`. Drop rows whose key was already seen. Rows missing either field pass through (rare; older logs).
+3. **Dedup** — global `HashSet<(String, String)>` keyed on `(message_id, request_id)`. Drop rows whose key was already seen. Rows missing either field skip dedup entirely (always pass through, never inserted into the seen-set) so blank strings can't collide.
 4. **Filter** — apply `--since` / `--until` (parsed in the active timezone) and `--project <substr>`.
 5. **Aggregate** — pass surviving rows to the report-specific bucketer:
    - `daily`: `date in tz → totals`
@@ -95,8 +95,8 @@ Source: LiteLLM's `model_prices_and_context_window.json` (raw GitHub URL). Ship 
 
 Lifecycle:
 
-1. **Build-time:** `build.rs` reads `src/usage/pricing.json` and exposes it via `include_str!`. If a future `build.rs` enhancement wants to refresh the snapshot during build, the download is best-effort and the build never fails because of it.
-2. **Runtime:** if `~/.cache/oronzo/pricing.json` exists and its mtime is from the current calendar day (system local), use it. Otherwise spawn a 2-second `ureq` GET; on success, atomically replace the cache and use the new copy; on failure, silently fall through to the bundled snapshot.
+1. **Build-time:** `src/usage/pricing.json` is checked into the repo and embedded via `include_str!`. The build performs no network IO. Refreshing the snapshot is a manual maintenance step in a separate PR (e.g. a `scripts/refresh-pricing.sh`).
+2. **Runtime:** if `~/.cache/oronzo/pricing.json` exists and its mtime is from the current calendar day (system local), use it. Otherwise spawn a 2-second `ureq` GET; on success, write the response to a temp file in the same directory then `rename` it over `pricing.json` (atomic replace); on failure, silently fall through to the bundled snapshot.
 3. `--offline` short-circuits straight to the bundled snapshot.
 4. **Missing models:** model IDs not present in the pricing file (e.g. a model newer than the snapshot) compute as `cost = 0` with an `(missing pricing)` annotation in non-JSON output. JSON output sets `"cost_usd": null` for those rows.
 
