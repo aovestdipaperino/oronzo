@@ -62,6 +62,24 @@ pub fn html_escape(s: &str) -> String {
     out
 }
 
+use pulldown_cmark::{html, Options, Parser};
+
+pub fn render_markdown(s: &str) -> String {
+    let mut opts = Options::empty();
+    opts.insert(Options::ENABLE_TABLES);
+    opts.insert(Options::ENABLE_STRIKETHROUGH);
+    opts.insert(Options::ENABLE_TASKLISTS);
+
+    let parser = Parser::new_ext(s, opts);
+    let safe = parser.filter_map(|event| match event {
+        pulldown_cmark::Event::Html(_) | pulldown_cmark::Event::InlineHtml(_) => None,
+        other => Some(other),
+    });
+    let mut out = String::new();
+    html::push_html(&mut out, safe);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +131,35 @@ mod tests {
     fn html_escape_passes_through_plain_text() {
         assert_eq!(html_escape("hello world"), "hello world");
         assert_eq!(html_escape(""), "");
+    }
+
+    #[test]
+    fn render_markdown_renders_bold_and_italic() {
+        let out = render_markdown("**bold** and *italic*");
+        assert!(out.contains("<strong>bold</strong>"));
+        assert!(out.contains("<em>italic</em>"));
+    }
+
+    #[test]
+    fn render_markdown_renders_fenced_code_with_language_class() {
+        let md = "```rust\nfn main() {}\n```";
+        let out = render_markdown(md);
+        assert!(out.contains("<code class=\"language-rust\">"));
+        assert!(out.contains("fn main() {}"));
+    }
+
+    #[test]
+    fn render_markdown_renders_tables() {
+        let md = "| a | b |\n|---|---|\n| 1 | 2 |\n";
+        let out = render_markdown(md);
+        assert!(out.contains("<table>"));
+        assert!(out.contains("<th>a</th>"));
+        assert!(out.contains("<td>1</td>"));
+    }
+
+    #[test]
+    fn render_markdown_escapes_raw_html_input() {
+        let out = render_markdown("plain <script>x</script> text");
+        assert!(!out.contains("<script>"));
     }
 }
