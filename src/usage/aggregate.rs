@@ -143,6 +143,28 @@ pub fn aggregate_monthly(rows: Vec<UsageRow>, args: &UsageArgs, pricing: &Pricin
     }
 }
 
+pub fn aggregate_session(rows: Vec<UsageRow>, _args: &UsageArgs, pricing: &Pricing) -> ReportData {
+    let mut acc: BTreeMap<(String, String), Acc> = BTreeMap::new();
+    for r in rows {
+        let key = (r.project.clone(), r.session_id.clone());
+        let entry = acc.entry(key.clone()).or_default();
+        if entry.project.is_none() {
+            entry.project = Some(key.0.clone());
+        }
+        entry.add(&r, pricing);
+    }
+    let buckets = acc
+        .into_iter()
+        .map(|((project, session), a)| {
+            let label = format!("{project} / {session}");
+            let mut b = a.into_bucket(label);
+            b.project = Some(project);
+            b
+        })
+        .collect();
+    ReportData { kind: ReportKind::Session, buckets }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,5 +262,24 @@ mod tests {
         assert_eq!(report.buckets[0].label, "2026-04");
         assert_eq!(report.buckets[1].label, "2026-05");
         assert_eq!(report.buckets[1].input, 2);
+    }
+
+    #[test]
+    fn session_buckets_by_project_session_pair() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        let mut a = row("2026-05-07T10:00:00Z", "/p");
+        a.session_id = "s1".into();
+        let mut b = row("2026-05-07T11:00:00Z", "/p");
+        b.session_id = "s1".into();
+        let mut c = row("2026-05-07T12:00:00Z", "/p");
+        c.session_id = "s2".into();
+        let report = aggregate_session(vec![a, b, c], &args, &crate::usage::pricing::Pricing::bundled());
+        assert_eq!(report.buckets.len(), 2);
+        // The s1 bucket aggregates two rows.
+        let s1 = report.buckets.iter().find(|b| b.label.ends_with("s1")).unwrap();
+        assert_eq!(s1.input, 2);
+        assert_eq!(s1.first.to_rfc3339(), "2026-05-07T10:00:00+00:00");
+        assert_eq!(s1.last.to_rfc3339(),  "2026-05-07T11:00:00+00:00");
     }
 }
