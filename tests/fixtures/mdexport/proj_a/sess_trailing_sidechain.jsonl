@@ -1,0 +1,2 @@
+{"type":"user","cwd":"/tmp/proj_a","sessionId":"77777777-7777-7777-7777-777777777777","timestamp":"2026-05-07T16:00:00Z","message":{"role":"user","content":"go"}}
+{"type":"assistant","cwd":"/tmp/proj_a","sessionId":"77777777-7777-7777-7777-777777777777","isSidechain":true,"requestId":"req-77","timestamp":"2026-05-07T16:00:01Z","message":{"id":"msg-77","model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"text","text":"ending inside subagent"}]}}

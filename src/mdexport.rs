@@ -403,6 +403,12 @@ pub fn render(session: &Session, args: &Args) -> String {
     out
 }
 
+fn decoded_bytes(b64: &str) -> usize {
+    // base64 expands 3 bytes → 4 chars, plus padding. Approximate by trimming padding.
+    let trimmed = b64.trim_end_matches('=').len();
+    trimmed * 3 / 4
+}
+
 pub fn lang_for_path(path: &str) -> &'static str {
     let ext = std::path::Path::new(path)
         .extension()
@@ -449,7 +455,7 @@ pub fn render_block(block: &Block, args: &Args) -> String {
         }
         Block::Image { media_type, data } => {
             if !args.images {
-                return format!("_(image omitted: {}, {} bytes)_\n", media_type, data.len());
+                return format!("_(image omitted: {}, {} bytes)_\n", media_type, decoded_bytes(data));
             }
             format!("![image](data:{};base64,{})\n", media_type, data)
         }
@@ -694,21 +700,21 @@ pub fn rank_with_query(claude_dir: &Path, query: &str) -> Vec<SessionInfo> {
     ranked
 }
 
-pub fn parse_selection(input: &str, count: usize) -> Option<usize> {
+pub fn parse_selection(input: &str, count: usize) -> Result<Option<usize>, ()> {
     let trimmed = input.trim();
-    if trimmed.is_empty() { return None; }
+    if trimmed.is_empty() { return Ok(None); }
     match trimmed.parse::<usize>() {
-        Ok(n) if n >= 1 && n <= count => Some(n - 1),
-        _ => None,
+        Ok(n) if n >= 1 && n <= count => Ok(Some(n - 1)),
+        _ => Err(()),
     }
 }
 
-pub fn prompt_selection(count: usize) -> Option<usize> {
+pub fn prompt_selection(count: usize) -> Result<Option<usize>, ()> {
     eprint!("Select number (Enter to cancel): ");
     let _ = std::io::stderr().flush();
     let mut input = String::new();
     if std::io::stdin().read_line(&mut input).is_err() {
-        return None;
+        return Err(());
     }
     parse_selection(&input, count)
 }
@@ -729,7 +735,7 @@ pub fn select_session(args: &Args) -> Result<Option<SessionFile>, String> {
             if infos.is_empty() {
                 return Err("no sessions found".into());
             }
-            Ok(pick_from(&infos, &home))
+            pick_from(&infos, &home)
         }
         Some(q) if looks_like_uuid_prefix(q) => {
             let matches = resolve_uuid_prefix(&claude_dir, q);
@@ -758,7 +764,7 @@ pub fn select_session(args: &Args) -> Result<Option<SessionFile>, String> {
                             })
                         })
                         .collect();
-                    Ok(pick_from(&infos, &home))
+                    pick_from(&infos, &home)
                 }
             }
         }
@@ -767,19 +773,24 @@ pub fn select_session(args: &Args) -> Result<Option<SessionFile>, String> {
             if infos.is_empty() {
                 return Err(format!("no results for '{q}'"));
             }
-            Ok(pick_from(&infos, &home))
+            pick_from(&infos, &home)
         }
     }
 }
 
-fn pick_from(infos: &[SessionInfo], home: &str) -> Option<SessionFile> {
+fn pick_from(infos: &[SessionInfo], home: &str) -> Result<Option<SessionFile>, String> {
     eprintln!();
     for (i, info) in infos.iter().enumerate() {
         eprint!("{}", format_picker_line(i + 1, info, home));
     }
-    let idx = prompt_selection(infos.len())?;
-    let info = &infos[idx];
-    Some(SessionFile { id: info.id.clone(), path: info.path.clone() })
+    match prompt_selection(infos.len()) {
+        Ok(None) => Ok(None),
+        Ok(Some(idx)) => {
+            let info = &infos[idx];
+            Ok(Some(SessionFile { id: info.id.clone(), path: info.path.clone() }))
+        }
+        Err(()) => Err("invalid selection".into()),
+    }
 }
 
 #[cfg(test)]
@@ -1175,15 +1186,39 @@ mod tests {
 
     #[test]
     fn parse_selection_valid_returns_index() {
-        assert_eq!(parse_selection("1", 5), Some(0));
-        assert_eq!(parse_selection("5", 5), Some(4));
+        assert_eq!(parse_selection("1", 5), Ok(Some(0)));
+        assert_eq!(parse_selection("5", 5), Ok(Some(4)));
     }
 
     #[test]
-    fn parse_selection_invalid_returns_none() {
-        assert_eq!(parse_selection("", 5), None);
-        assert_eq!(parse_selection("0", 5), None);
-        assert_eq!(parse_selection("6", 5), None);
-        assert_eq!(parse_selection("abc", 5), None);
+    fn parse_selection_empty_is_cancel() {
+        assert_eq!(parse_selection("", 5), Ok(None));
+        assert_eq!(parse_selection("   ", 5), Ok(None));
+    }
+
+    #[test]
+    fn parse_selection_out_of_range_is_error() {
+        assert_eq!(parse_selection("0", 5), Err(()));
+        assert_eq!(parse_selection("6", 5), Err(()));
+        assert_eq!(parse_selection("abc", 5), Err(()));
+    }
+
+    #[test]
+    fn render_image_omitted_reports_decoded_byte_count() {
+        let mut a = Args::default();
+        a.images = false;
+        // "iVBORw0KGgo=" is 12 chars including 1 padding, so 11 chars × 3 / 4 = 8 bytes decoded.
+        let block = Block::Image { media_type: "image/png".into(), data: "iVBORw0KGgo=".into() };
+        let out = render_block(&block, &a);
+        assert!(out.contains("8 bytes"), "got: {out}");
+    }
+
+    #[test]
+    fn render_closes_trailing_sidechain_span() {
+        let s = parse_session(&fixture("tests/fixtures/mdexport/proj_a/sess_trailing_sidechain.jsonl")).unwrap();
+        let md = render(&s, &Args::default());
+        // The session ends in a sidechain entry, so the trailing closer should fire.
+        assert!(md.contains("### 🤖 Subagent task"));
+        assert!(md.contains("### ← Resuming main thread"));
     }
 }
