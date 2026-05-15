@@ -22,6 +22,7 @@ Usage:
 
 Commands:
   search <query>       Search and resume sessions
+  usage [report]       Token and cost reports (daily/weekly/monthly/session/blocks)
   account-switch       Interactive account switcher
   account-save         Save current account
   account-list         List saved accounts
