@@ -55,6 +55,33 @@ oronzo search "location history cluster"
 
 Results show the first user message, working directory, and relevance score. Enter a number to resume that session in its original directory.
 
+### `oronzo usage [report]`
+
+Aggregate token usage and USD cost across all local Claude Code sessions. Defaults to a daily report.
+
+```bash
+oronzo usage                              # daily summary
+oronzo usage monthly --since 20260101
+oronzo usage session --project frontend
+oronzo usage blocks --active              # current 5-hour window
+oronzo usage daily --breakdown --json     # per-model rows as JSON
+```
+
+| Flag | Meaning |
+|---|---|
+| `--since YYYYMMDD` / `--until YYYYMMDD` | inclusive date bounds (also accepts `YYYY-MM-DD`) |
+| `--project <substr>` | filter by cwd substring |
+| `--breakdown` | per-model rows inside each bucket |
+| `--instances` | (daily/weekly/monthly) split by project |
+| `--timezone <IANA>` | e.g. `America/Los_Angeles`; defaults to system local |
+| `--json` | machine-readable output |
+| `--offline` | use bundled pricing snapshot; skip network |
+| `--debug` | print parse/dedup stats to stderr |
+
+Blocks-only: `--active` (open window only), `--recent N` (last N closed; default 10).
+
+Pricing data comes from [LiteLLM](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) and is refreshed at most once per day, cached at `~/.cache/oronzo/pricing.json`. A bundled snapshot ships with the binary as a fallback.
+
 ### `oronzo mv <from> <to>`
 
 Move a project folder while preserving its Claude Code sessions. Updates the project directory under `~/.claude/projects/`, rewrites `cwd` references in all session files, and updates prompt history so arrow-key recall works in the new location.
