@@ -1,5 +1,8 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelPricing {
@@ -20,6 +23,59 @@ pub struct Pricing {
 
 const BUNDLED: &str = include_str!("pricing.json");
 
+const LITELLM_URL: &str = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
+
+fn cache_path() -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("oronzo")
+        .join("pricing.json")
+}
+
+fn mtime_is_today(path: &std::path::Path) -> bool {
+    let Ok(meta) = fs::metadata(path) else {
+        return false;
+    };
+    let Ok(mtime) = meta.modified() else {
+        return false;
+    };
+    let Ok(mtime_secs) = mtime.duration_since(UNIX_EPOCH) else {
+        return false;
+    };
+    let Ok(now_secs) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        return false;
+    };
+    const ONE_DAY: u64 = 86_400;
+    (now_secs.as_secs() / ONE_DAY) == (mtime_secs.as_secs() / ONE_DAY)
+}
+
+fn parse_str(s: &str) -> Pricing {
+    let models = serde_json::from_str(s).unwrap_or_default();
+    Pricing { models }
+}
+
+fn try_fetch_and_cache() -> Option<Pricing> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(2)))
+        .build()
+        .into();
+    let mut resp = agent.get(LITELLM_URL).call().ok()?;
+    let body = resp.body_mut().read_to_string().ok()?;
+    let parsed = parse_str(&body);
+    if parsed.models.is_empty() {
+        return None;
+    }
+    let path = cache_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let tmp = path.with_extension("json.tmp");
+    if fs::write(&tmp, &body).is_ok() {
+        let _ = fs::rename(&tmp, &path);
+    }
+    Some(parsed)
+}
+
 impl Pricing {
     pub fn bundled() -> Self {
         let models: HashMap<String, ModelPricing> =
@@ -29,6 +85,25 @@ impl Pricing {
 
     pub fn lookup(&self, model: &str) -> Option<&ModelPricing> {
         self.models.get(model)
+    }
+
+    pub fn load(offline: bool) -> Self {
+        if offline {
+            return Pricing::bundled();
+        }
+        let path = cache_path();
+        if mtime_is_today(&path) {
+            if let Ok(body) = fs::read_to_string(&path) {
+                let parsed = parse_str(&body);
+                if !parsed.models.is_empty() {
+                    return parsed;
+                }
+            }
+        }
+        if let Some(fresh) = try_fetch_and_cache() {
+            return fresh;
+        }
+        Pricing::bundled()
     }
 }
 
@@ -50,5 +125,11 @@ mod tests {
     fn bundled_returns_none_for_unknown_model() {
         let p = Pricing::bundled();
         assert!(p.lookup("nonexistent-model").is_none());
+    }
+
+    #[test]
+    fn load_offline_returns_bundled() {
+        let p = Pricing::load(true);
+        assert!(p.lookup("claude-sonnet-4-6").is_some());
     }
 }
