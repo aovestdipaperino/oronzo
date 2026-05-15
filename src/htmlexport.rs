@@ -47,6 +47,21 @@ pub fn run(_args: &[String]) {
     std::process::exit(2);
 }
 
+pub fn html_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,5 +99,19 @@ mod tests {
     #[test]
     fn unknown_flag_errors() {
         assert!(parse_args(&argv(&["--bogus"])).is_err());
+    }
+
+    #[test]
+    fn html_escape_handles_all_five_entities() {
+        assert_eq!(html_escape("a & b"), "a &amp; b");
+        assert_eq!(html_escape("<tag>"), "&lt;tag&gt;");
+        assert_eq!(html_escape("\"quoted\""), "&quot;quoted&quot;");
+        assert_eq!(html_escape("it's"), "it&#39;s");
+    }
+
+    #[test]
+    fn html_escape_passes_through_plain_text() {
+        assert_eq!(html_escape("hello world"), "hello world");
+        assert_eq!(html_escape(""), "");
     }
 }
