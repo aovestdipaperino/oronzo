@@ -1,4 +1,4 @@
-use crate::usage::args::UsageArgs;
+use crate::usage::args::{ActiveTz, UsageArgs};
 use crate::usage::parse::UsageRow;
 use crate::usage::pricing::Pricing;
 use chrono::{DateTime, Utc};
@@ -251,10 +251,63 @@ pub fn blocks_filter(report: ReportData, args: &UsageArgs) -> ReportData {
     ReportData { kind: ReportKind::Blocks, buckets: out }
 }
 
+fn label_for(report_kind: &ReportKind, tz: &ActiveTz, ts: DateTime<Utc>) -> String {
+    match report_kind {
+        ReportKind::Daily   => tz.ymd_label(ts),
+        ReportKind::Weekly  => tz.iso_week_label(ts),
+        ReportKind::Monthly => tz.ym_label(ts),
+        ReportKind::Session => String::new(),
+        ReportKind::Blocks  => String::new(),
+    }
+}
+
+pub fn apply_breakdown(report: ReportData, rows: Vec<UsageRow>, args: &UsageArgs) -> ReportData {
+    if !args.breakdown {
+        return report;
+    }
+    let pricing = Pricing::load(args.offline);
+    let mut acc: BTreeMap<(String, String), Acc> = BTreeMap::new();
+    for r in rows {
+        let label = label_for(&report.kind, &args.timezone, r.timestamp);
+        let key = (label.clone(), r.model.clone());
+        let entry = acc.entry(key).or_default();
+        if entry.model.is_none() {
+            entry.model = Some(r.model.clone());
+        }
+        entry.add(&r, &pricing);
+    }
+    let buckets = acc
+        .into_iter()
+        .map(|((label, _), a)| a.into_bucket(label))
+        .collect();
+    ReportData { kind: report.kind, buckets }
+}
+
+pub fn apply_instances(report: ReportData, rows: Vec<UsageRow>, args: &UsageArgs) -> ReportData {
+    if !args.instances {
+        return report;
+    }
+    let pricing = Pricing::load(args.offline);
+    let mut acc: BTreeMap<(String, String), Acc> = BTreeMap::new();
+    for r in rows {
+        let label = label_for(&report.kind, &args.timezone, r.timestamp);
+        let key = (label.clone(), r.project.clone());
+        let entry = acc.entry(key).or_default();
+        if entry.project.is_none() {
+            entry.project = Some(r.project.clone());
+        }
+        entry.add(&r, &pricing);
+    }
+    let buckets = acc
+        .into_iter()
+        .map(|((label, _), a)| a.into_bucket(label))
+        .collect();
+    ReportData { kind: report.kind, buckets }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::usage::args::ActiveTz;
     use chrono::{DateTime, NaiveDate, Utc};
 
     fn row(ts: &str, project: &str) -> UsageRow {
@@ -443,5 +496,43 @@ mod tests {
         let r = aggregate_blocks(rows, &args, &crate::usage::pricing::Pricing::bundled());
         let filtered = blocks_filter(r, &args);
         assert_eq!(filtered.buckets.len(), 2);
+    }
+
+    #[test]
+    fn breakdown_emits_one_row_per_model_within_bucket() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        args.breakdown = true;
+        args.offline = true;
+        let rows = vec![
+            { let mut r = row("2026-05-07T10:00:00Z","/p"); r.model="claude-sonnet-4-6".into(); r },
+            { let mut r = row("2026-05-07T11:00:00Z","/p"); r.model="claude-haiku-4-5-20251001".into(); r },
+        ];
+        let report = aggregate_daily(rows.clone(), &args, &crate::usage::pricing::Pricing::bundled());
+        let expanded = apply_breakdown(report, rows, &args);
+        assert_eq!(expanded.buckets.len(), 2);
+        let models: std::collections::HashSet<_> =
+            expanded.buckets.iter().filter_map(|b| b.model.as_deref()).collect();
+        assert!(models.contains("claude-sonnet-4-6"));
+        assert!(models.contains("claude-haiku-4-5-20251001"));
+    }
+
+    #[test]
+    fn instances_emits_one_row_per_project_within_bucket() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        args.instances = true;
+        args.offline = true;
+        let rows = vec![
+            row("2026-05-07T10:00:00Z", "/proj/a"),
+            row("2026-05-07T11:00:00Z", "/proj/b"),
+        ];
+        let report = aggregate_daily(rows.clone(), &args, &crate::usage::pricing::Pricing::bundled());
+        let expanded = apply_instances(report, rows, &args);
+        assert_eq!(expanded.buckets.len(), 2);
+        let projects: std::collections::HashSet<_> =
+            expanded.buckets.iter().filter_map(|b| b.project.as_deref()).collect();
+        assert!(projects.contains("/proj/a"));
+        assert!(projects.contains("/proj/b"));
     }
 }
