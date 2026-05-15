@@ -52,6 +52,7 @@ use crate::sessions::{self, SessionFile};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::time::SystemTime;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Role {
@@ -92,6 +93,16 @@ pub struct Entry {
     pub is_meta: bool,
     pub is_compact_summary: bool,
     pub blocks: Vec<Block>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionInfo {
+    pub path: std::path::PathBuf,
+    pub id: String,
+    pub project: String,
+    pub first_msg: String,
+    pub mtime: f64,
+    pub score: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -495,6 +506,69 @@ pub fn resolve_uuid_prefix(claude_dir: &Path, prefix: &str) -> Vec<SessionFile> 
         .collect()
 }
 
+pub fn list_recent_sessions(claude_dir: &Path, limit: usize) -> Vec<SessionInfo> {
+    let files = sessions::discover(claude_dir);
+    let mut infos: Vec<SessionInfo> = files
+        .into_iter()
+        .filter_map(|sf| {
+            let mtime = fs::metadata(&sf.path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0);
+            let session = parse_session(&sf.path).ok()?;
+            let first_msg = first_user_text(&session).unwrap_or_else(|| "(no summary)".into());
+            Some(SessionInfo {
+                path: sf.path,
+                id: sf.id,
+                project: session.meta.project,
+                first_msg,
+                mtime,
+                score: None,
+            })
+        })
+        .collect();
+    infos.sort_by(|a, b| b.mtime.partial_cmp(&a.mtime).unwrap_or(std::cmp::Ordering::Equal));
+    infos.truncate(limit);
+    infos
+}
+
+fn first_user_text(s: &Session) -> Option<String> {
+    for e in &s.entries {
+        if e.is_meta { continue; }
+        if !matches!(e.role, Role::User) { continue; }
+        for b in &e.blocks {
+            if let Block::Text(t) = b {
+                let cleaned: String = t.replace('\n', " ");
+                let truncated: String = cleaned.chars().take(90).collect();
+                if truncated.chars().count() < cleaned.chars().count() {
+                    return Some(format!("{truncated}…"));
+                }
+                return Some(truncated);
+            }
+        }
+    }
+    None
+}
+
+pub fn format_picker_line(idx: usize, info: &SessionInfo, home: &str) -> String {
+    let project = if !home.is_empty() && info.project.starts_with(home) {
+        info.project.replacen(home, "~", 1)
+    } else {
+        info.project.clone()
+    };
+    let when = chrono::DateTime::<chrono::Local>::from(
+        SystemTime::UNIX_EPOCH + std::time::Duration::from_secs_f64(info.mtime),
+    )
+    .format("%Y-%m-%d %H:%M");
+    if let Some(score) = info.score {
+        format!("  {idx:>2}. [{score:.4}] {}  ({}, {when})\n", info.first_msg, project)
+    } else {
+        format!("  {idx:>2}. {}  ({}, {when})\n", info.first_msg, project)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -834,5 +908,46 @@ mod tests {
         let fixtures_root = fixture("tests/fixtures/mdexport");
         let matches = resolve_uuid_prefix(&fixtures_root, "99999999");
         assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn list_recent_sessions_returns_session_info_with_first_msg() {
+        let fixtures_root = fixture("tests/fixtures/mdexport");
+        let infos = list_recent_sessions(&fixtures_root, 100);
+        assert!(infos.len() >= 6);
+        let tools = infos.iter().find(|i| i.id == "11111111-1111-1111-1111-111111111111").unwrap();
+        assert_eq!(tools.project, "/tmp/proj_a");
+        assert_eq!(tools.first_msg, "list the files");
+    }
+
+    #[test]
+    fn format_picker_line_includes_score_when_present() {
+        let info = SessionInfo {
+            path: "/x".into(),
+            id: "abcd".into(),
+            project: "/Users/me/Code/foo".into(),
+            first_msg: "do thing".into(),
+            mtime: 1700000000.0,
+            score: Some(0.5432),
+        };
+        let line = format_picker_line(1, &info, "/Users/me");
+        assert!(line.contains("[0.5432]"));
+        assert!(line.contains("~/Code/foo"));
+        assert!(line.contains("do thing"));
+    }
+
+    #[test]
+    fn format_picker_line_no_score_omits_brackets() {
+        let info = SessionInfo {
+            path: "/x".into(),
+            id: "abcd".into(),
+            project: "/tmp/p".into(),
+            first_msg: "do thing".into(),
+            mtime: 1700000000.0,
+            score: None,
+        };
+        let line = format_picker_line(2, &info, "");
+        assert!(!line.contains("["));
+        assert!(line.contains("do thing"));
     }
 }
