@@ -336,11 +336,98 @@ pub fn render_block(block: &Block, args: &Args) -> String {
             }
             format!("![image](data:{};base64,{})\n", media_type, data)
         }
-        Block::ToolUse { .. } | Block::ToolResult { .. } => {
-            // Filled in by Task 7.
-            String::new()
+        Block::ToolUse { name, input, .. } => {
+            if !args.tools { return String::new(); }
+            render_tool_use(name, input)
+        }
+        Block::ToolResult { content, is_error } => {
+            if !args.tools { return String::new(); }
+            render_tool_result(content, *is_error, args)
         }
     }
+}
+
+fn render_tool_use(name: &str, input: &serde_json::Value) -> String {
+    match name {
+        "Bash" => {
+            let cmd = input.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            let desc = input.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            let mut out = String::new();
+            if !desc.is_empty() {
+                out.push_str(&format!("_{desc}_\n\n"));
+            }
+            out.push_str(&format!("```bash\n{cmd}\n```\n"));
+            out
+        }
+        "Edit" => {
+            let path = input.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+            let old = input.get("old_string").and_then(|v| v.as_str()).unwrap_or("");
+            let new = input.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
+            let replace_all = input.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
+            let mut out = format!("**Edit: `{path}`**");
+            if replace_all { out.push_str(" _(replace_all)_"); }
+            out.push_str("\n\n```diff\n");
+            for line in old.lines() { out.push_str(&format!("- {line}\n")); }
+            for line in new.lines() { out.push_str(&format!("+ {line}\n")); }
+            out.push_str("```\n");
+            out
+        }
+        "Write" => {
+            let path = input.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+            let content = input.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            let lang = lang_for_path(path);
+            format!("**Write: `{path}`**\n\n```{lang}\n{content}\n```\n")
+        }
+        "Read" => {
+            let path = input.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+            let offset = input.get("offset").and_then(|v| v.as_u64());
+            let limit = input.get("limit").and_then(|v| v.as_u64());
+            let mut out = format!("**Read: `{path}`**");
+            if offset.is_some() || limit.is_some() {
+                let o = offset.unwrap_or(0);
+                let l = limit.unwrap_or(0);
+                out.push_str(&format!(" _(offset {o}, limit {l})_"));
+            }
+            out.push('\n');
+            out
+        }
+        "TodoWrite" => {
+            let mut out = String::new();
+            if let Some(todos) = input.get("todos").and_then(|v| v.as_array()) {
+                for todo in todos {
+                    let content = todo.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                    let status = todo.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                    let line = match status {
+                        "completed" => format!("- [x] {content}\n"),
+                        "in_progress" => format!("- [ ] 🚧 {content}\n"),
+                        _ => format!("- [ ] {content}\n"),
+                    };
+                    out.push_str(&line);
+                }
+            }
+            out
+        }
+        other => {
+            let json = serde_json::to_string_pretty(input).unwrap_or_else(|_| "{}".into());
+            format!("**Tool: {other}**\n\n```json\n{json}\n```\n")
+        }
+    }
+}
+
+fn render_tool_result(content: &ToolResultContent, is_error: bool, args: &Args) -> String {
+    let mut out = String::new();
+    if is_error { out.push_str("**❌ Tool error:**\n\n"); }
+    match content {
+        ToolResultContent::Text(s) => {
+            out.push_str(&format!("```text\n{s}\n```\n"));
+        }
+        ToolResultContent::Blocks(blocks) => {
+            for b in blocks {
+                out.push_str(&render_block(b, args));
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -520,5 +607,95 @@ mod tests {
         let block = Block::Image { media_type: "image/png".into(), data: "iVBORw0KGgo=".into() };
         let out = render_block(&block, &a);
         assert!(out.contains("(image omitted: image/png"));
+    }
+
+    fn tool_use(name: &str, input: serde_json::Value) -> Block {
+        Block::ToolUse { name: name.into(), input, id: "t-1".into() }
+    }
+
+    #[test]
+    fn render_bash_emits_bash_code_block() {
+        let b = tool_use("Bash", serde_json::json!({"command":"ls -la","description":"list"}));
+        let out = render_block(&b, &Args::default());
+        assert!(out.contains("_list_"));
+        assert!(out.contains("```bash\nls -la\n```"));
+    }
+
+    #[test]
+    fn render_edit_emits_diff_block() {
+        let b = tool_use("Edit", serde_json::json!({
+            "file_path":"/tmp/x.rs", "old_string":"foo", "new_string":"bar", "replace_all": true,
+        }));
+        let out = render_block(&b, &Args::default());
+        assert!(out.contains("**Edit: `/tmp/x.rs`**"));
+        assert!(out.contains("```diff"));
+        assert!(out.contains("- foo"));
+        assert!(out.contains("+ bar"));
+        assert!(out.contains("_(replace_all)_"));
+    }
+
+    #[test]
+    fn render_write_picks_language() {
+        let b = tool_use("Write", serde_json::json!({"file_path":"/tmp/a.rs","content":"fn main(){}"}));
+        let out = render_block(&b, &Args::default());
+        assert!(out.contains("**Write: `/tmp/a.rs`**"));
+        assert!(out.contains("```rust\nfn main(){}\n```"));
+    }
+
+    #[test]
+    fn render_read_with_offset_and_limit() {
+        let b = tool_use("Read", serde_json::json!({"file_path":"/tmp/a.rs","offset":10,"limit":50}));
+        let out = render_block(&b, &Args::default());
+        assert!(out.contains("**Read: `/tmp/a.rs`**"));
+        assert!(out.contains("_(offset 10, limit 50)_"));
+    }
+
+    #[test]
+    fn render_todowrite_renders_checklist() {
+        let b = tool_use("TodoWrite", serde_json::json!({
+            "todos":[
+                {"content":"alpha","status":"pending"},
+                {"content":"beta","status":"in_progress"},
+                {"content":"gamma","status":"completed"}
+            ]
+        }));
+        let out = render_block(&b, &Args::default());
+        assert!(out.contains("- [ ] alpha"));
+        assert!(out.contains("- [ ] 🚧 beta"));
+        assert!(out.contains("- [x] gamma"));
+    }
+
+    #[test]
+    fn render_other_tool_falls_back_to_json() {
+        let b = tool_use("Glob", serde_json::json!({"pattern":"*.rs"}));
+        let out = render_block(&b, &Args::default());
+        assert!(out.contains("**Tool: Glob**"));
+        assert!(out.contains("```json"));
+        assert!(out.contains("\"pattern\": \"*.rs\""));
+    }
+
+    #[test]
+    fn render_tool_result_text() {
+        let b = Block::ToolResult { content: ToolResultContent::Text("hello".into()), is_error: false };
+        let out = render_block(&b, &Args::default());
+        assert!(out.contains("```text\nhello\n```"));
+    }
+
+    #[test]
+    fn render_tool_result_error_prepends_marker() {
+        let b = Block::ToolResult { content: ToolResultContent::Text("boom".into()), is_error: true };
+        let out = render_block(&b, &Args::default());
+        assert!(out.contains("**❌ Tool error:**"));
+        assert!(out.contains("```text\nboom\n```"));
+    }
+
+    #[test]
+    fn render_tool_blocks_skipped_when_disabled() {
+        let mut a = Args::default();
+        a.tools = false;
+        let bu = tool_use("Bash", serde_json::json!({"command":"ls"}));
+        let br = Block::ToolResult { content: ToolResultContent::Text("x".into()), is_error: false };
+        assert!(render_block(&bu, &a).is_empty());
+        assert!(render_block(&br, &a).is_empty());
     }
 }
