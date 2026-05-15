@@ -1,6 +1,5 @@
-use crate::usage::args::{ActiveTz, UsageArgs};
+use crate::usage::args::UsageArgs;
 use crate::usage::parse::UsageRow;
-use chrono::{DateTime, Utc};
 
 pub fn filter(rows: Vec<UsageRow>, args: &UsageArgs) -> Vec<UsageRow> {
     let tz = &args.timezone;
@@ -34,7 +33,8 @@ pub fn filter(rows: Vec<UsageRow>, args: &UsageArgs) -> Vec<UsageRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
+    use crate::usage::args::ActiveTz;
+    use chrono::{DateTime, NaiveDate, Utc};
 
     fn row(ts: &str, project: &str) -> UsageRow {
         UsageRow {
