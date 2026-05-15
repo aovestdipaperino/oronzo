@@ -1,0 +1,2 @@
+{"type":"user","cwd":"/tmp/proj_a","sessionId":"66666666-6666-6666-6666-666666666666","isMeta":true,"timestamp":"2026-05-07T15:00:00Z","message":{"role":"user","content":"Warmup"}}
+{"type":"assistant","cwd":"/tmp/proj_a","sessionId":"66666666-6666-6666-6666-666666666666","isMeta":true,"requestId":"req-9","timestamp":"2026-05-07T15:00:01Z","message":{"id":"msg-9","model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"text","text":"Warming up."}]}}

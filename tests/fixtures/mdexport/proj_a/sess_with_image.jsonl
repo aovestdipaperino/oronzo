@@ -1,0 +1,2 @@
+{"type":"user","cwd":"/tmp/proj_a","sessionId":"44444444-4444-4444-4444-444444444444","timestamp":"2026-05-07T13:00:00Z","message":{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}]}}
+{"type":"assistant","cwd":"/tmp/proj_a","sessionId":"44444444-4444-4444-4444-444444444444","requestId":"req-7","timestamp":"2026-05-07T13:00:01Z","message":{"id":"msg-7","model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"text","text":"I see the image."}]}}
