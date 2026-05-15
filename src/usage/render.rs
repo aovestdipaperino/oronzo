@@ -4,8 +4,29 @@ pub fn to_json(report: &ReportData) -> String {
     serde_json::to_string_pretty(report).unwrap_or_else(|_| "{}".into())
 }
 
-pub fn to_table(_report: &ReportData) -> String {
-    String::new() // implemented in task 21
+pub fn to_table(report: &ReportData) -> String {
+    use comfy_table::{Cell, Table};
+    let mut table = Table::new();
+    table.set_header(vec![
+        "Label", "Project", "Model", "Input", "Output", "Cache+", "CacheR", "Cost (USD)",
+    ]);
+    for b in &report.buckets {
+        let cost = match b.cost_usd {
+            Some(v) => format!("${v:.4}"),
+            None => "—".into(),
+        };
+        table.add_row(vec![
+            Cell::new(&b.label),
+            Cell::new(b.project.as_deref().unwrap_or("—")),
+            Cell::new(b.model.as_deref().unwrap_or("—")),
+            Cell::new(b.input),
+            Cell::new(b.output),
+            Cell::new(b.cache_creation),
+            Cell::new(b.cache_read),
+            Cell::new(cost),
+        ]);
+    }
+    table.to_string()
 }
 
 #[cfg(test)]
@@ -27,6 +48,19 @@ mod tests {
             first: Utc::now(),
             last: Utc::now(),
         }
+    }
+
+    #[test]
+    fn table_includes_label_and_token_columns() {
+        let r = ReportData {
+            kind: ReportKind::Daily,
+            buckets: vec![bucket()],
+        };
+        let s = to_table(&r);
+        assert!(s.contains("2026-05-07"));
+        assert!(s.contains("100"));
+        assert!(s.contains("50"));
+        assert!(s.to_lowercase().contains("input"));
     }
 
     #[test]
