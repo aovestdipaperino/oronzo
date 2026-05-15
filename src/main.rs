@@ -23,6 +23,7 @@ Usage:
 
 Commands:
   search <query>       Search and resume sessions
+  mdexport [query]     Export a session as markdown
   usage [report]       Token and cost reports (daily/weekly/monthly/session/blocks)
   account-switch       Interactive account switcher
   account-save         Save current account
