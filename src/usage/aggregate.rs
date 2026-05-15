@@ -228,6 +228,29 @@ pub fn aggregate_blocks(mut rows: Vec<UsageRow>, _args: &UsageArgs, pricing: &Pr
     ReportData { kind: ReportKind::Blocks, buckets }
 }
 
+pub fn block_is_active(b: &Bucket, now: DateTime<Utc>) -> bool {
+    let window_end = b.first + Duration::hours(5);
+    window_end > now && (now - b.last) < Duration::hours(5)
+}
+
+pub fn blocks_filter(report: ReportData, args: &UsageArgs) -> ReportData {
+    let now = Utc::now();
+    let mut buckets = report.buckets;
+    if args.active {
+        buckets.retain(|b| block_is_active(b, now));
+        return ReportData { kind: ReportKind::Blocks, buckets };
+    }
+    let active: Vec<Bucket> = buckets.iter().filter(|b| block_is_active(b, now)).cloned().collect();
+    let mut closed: Vec<Bucket> = buckets.into_iter().filter(|b| !block_is_active(b, now)).collect();
+    closed.sort_by_key(|b| b.first);
+    let tail_start = closed.len().saturating_sub(args.recent);
+    let kept_closed: Vec<Bucket> = closed.into_iter().skip(tail_start).collect();
+    let mut out = kept_closed;
+    out.extend(active);
+    out.sort_by_key(|b| b.first);
+    ReportData { kind: ReportKind::Blocks, buckets: out }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,5 +405,43 @@ mod tests {
         ];
         let report = aggregate_blocks(rows, &args, &crate::usage::pricing::Pricing::bundled());
         assert_eq!(report.buckets.len(), 2);
+    }
+
+    #[test]
+    fn blocks_active_keeps_only_open_window() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        args.active = true;
+
+        let now = Utc::now();
+        let recent_ts = now - chrono::Duration::minutes(30);
+        let old_ts = now - chrono::Duration::hours(20);
+
+        let rows = vec![
+            row(&old_ts.to_rfc3339(), "/p"),
+            row(&recent_ts.to_rfc3339(), "/p"),
+        ];
+
+        let r = aggregate_blocks(rows, &args, &crate::usage::pricing::Pricing::bundled());
+        let filtered = blocks_filter(r, &args);
+        assert_eq!(filtered.buckets.len(), 1);
+        assert!(filtered.buckets[0].last >= recent_ts - chrono::Duration::seconds(1));
+    }
+
+    #[test]
+    fn blocks_recent_n_caps_history() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        args.recent = 2;
+        // Construct four windows by spacing rows far apart.
+        let rows = vec![
+            row("2026-01-01T10:00:00Z", "/p"),
+            row("2026-01-02T10:00:00Z", "/p"),
+            row("2026-01-03T10:00:00Z", "/p"),
+            row("2026-01-04T10:00:00Z", "/p"),
+        ];
+        let r = aggregate_blocks(rows, &args, &crate::usage::pricing::Pricing::bundled());
+        let filtered = blocks_filter(r, &args);
+        assert_eq!(filtered.buckets.len(), 2);
     }
 }
