@@ -4,11 +4,11 @@ use std::env;
 use std::process;
 use std::time::SystemTime;
 
-mod mv;
-mod sessions;
-mod switch;
-mod upgrade;
-mod usage;
+pub mod mv;
+pub mod sessions;
+pub mod switch;
+pub mod upgrade;
+pub mod usage;
 
 const LOGO: &str = include_str!(concat!(env!("OUT_DIR"), "/logo.ansi"));
 
