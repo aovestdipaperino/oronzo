@@ -1,4 +1,4 @@
-use crate::usage::aggregate::{Bucket, ReportData};
+use crate::usage::aggregate::ReportData;
 
 pub fn to_json(report: &ReportData) -> String {
     serde_json::to_string_pretty(report).unwrap_or_else(|_| "{}".into())
@@ -11,7 +11,7 @@ pub fn to_table(_report: &ReportData) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::usage::aggregate::ReportKind;
+    use crate::usage::aggregate::{Bucket, ReportKind};
     use chrono::Utc;
 
     fn bucket() -> Bucket {
