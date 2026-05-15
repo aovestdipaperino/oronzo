@@ -135,6 +135,39 @@ pub fn parse(args: &[String]) -> Result<UsageArgs, String> {
     Ok(out)
 }
 
+use chrono::{DateTime, Datelike, Local, TimeZone, Utc};
+
+impl ActiveTz {
+    pub fn date_of(&self, ts: DateTime<Utc>) -> chrono::NaiveDate {
+        match self {
+            ActiveTz::Named(tz) => ts.with_timezone(tz).date_naive(),
+            ActiveTz::Local => ts.with_timezone(&Local).date_naive(),
+        }
+    }
+
+    pub fn ymd_label(&self, ts: DateTime<Utc>) -> String {
+        self.date_of(ts).format("%Y-%m-%d").to_string()
+    }
+
+    pub fn ym_label(&self, ts: DateTime<Utc>) -> String {
+        self.date_of(ts).format("%Y-%m").to_string()
+    }
+
+    pub fn iso_week_label(&self, ts: DateTime<Utc>) -> String {
+        let d = self.date_of(ts);
+        let iso = d.iso_week();
+        format!("{}-W{:02}", iso.year(), iso.week())
+    }
+
+    pub fn start_of_day_utc(&self, d: chrono::NaiveDate) -> DateTime<Utc> {
+        let naive = d.and_hms_opt(0, 0, 0).unwrap();
+        match self {
+            ActiveTz::Named(tz) => tz.from_local_datetime(&naive).unwrap().with_timezone(&Utc),
+            ActiveTz::Local => Local.from_local_datetime(&naive).unwrap().with_timezone(&Utc),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,5 +256,22 @@ mod tests {
     #[test]
     fn rejects_active_without_blocks() {
         assert!(parse(&argv(&["daily", "--active"])).is_err());
+    }
+
+    #[test]
+    fn date_of_handles_timezone_shift_across_midnight() {
+        let ts = chrono::DateTime::parse_from_rfc3339("2026-05-07T23:30:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let tz = ActiveTz::Named(chrono_tz::Asia::Tokyo); // UTC+9
+        assert_eq!(
+            tz.date_of(ts),
+            chrono::NaiveDate::from_ymd_opt(2026, 5, 8).unwrap()
+        );
+        let utc = ActiveTz::Named(chrono_tz::UTC);
+        assert_eq!(
+            utc.date_of(ts),
+            chrono::NaiveDate::from_ymd_opt(2026, 5, 7).unwrap()
+        );
     }
 }
