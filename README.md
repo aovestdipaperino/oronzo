@@ -55,6 +55,27 @@ oronzo search "location history cluster"
 
 Results show the first user message, working directory, and relevance score. Enter a number to resume that session in its original directory.
 
+### `oronzo mdexport [query]`
+
+Export a single Claude Code session to Markdown on stdout.
+
+```bash
+oronzo mdexport                          # pick from 30 most recent
+oronzo mdexport "fix auth bug"           # BM25 search → picker
+oronzo mdexport 11111111                 # match by session UUID prefix
+oronzo mdexport > out.md                 # picker UI on stderr, markdown on stdout
+oronzo mdexport --no-tools --no-thinking # leaner reading version
+```
+
+| Flag | Effect |
+|---|---|
+| `--no-tools` | drop `tool_use` and `tool_result` blocks |
+| `--no-thinking` | drop `thinking` blocks |
+| `--no-sidechains` | drop subagent (sidechain) entries |
+| `--no-images` | replace image blocks with a `(image omitted)` placeholder |
+
+Special-cased renderers for `Bash` (` ```bash` block), `Edit` (`diff` block), `Write` (typed code block), `Read` (path header), and `TodoWrite` (markdown checklist). All other tools fall back to a generic ` ```json` block. Sidechain spans are bracketed with `### 🤖 Subagent task` and `### ← Resuming main thread` headings.
+
 ### `oronzo usage [report]`
 
 Aggregate token usage and USD cost across all local Claude Code sessions. Defaults to a daily report.
