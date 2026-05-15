@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 pub struct SessionFile {
@@ -21,6 +22,22 @@ pub fn claude_dir() -> PathBuf {
         .join("projects")
 }
 
+fn session_id_from_file(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        let line = line.trim().to_string();
+        if line.is_empty() {
+            continue;
+        }
+        let obj: serde_json::Value = serde_json::from_str(&line).ok()?;
+        if let Some(id) = obj.get("sessionId").and_then(|v| v.as_str()) {
+            return Some(id.to_string());
+        }
+        return None;
+    }
+    None
+}
+
 pub fn discover(claude_dir: &Path) -> Vec<SessionFile> {
     let mut sessions = Vec::new();
     let Ok(projects) = fs::read_dir(claude_dir) else {
@@ -37,11 +54,12 @@ pub fn discover(claude_dir: &Path) -> Vec<SessionFile> {
         for file_entry in files.flatten() {
             let path = file_entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
-                let id = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_string();
+                let id = session_id_from_file(&path).unwrap_or_else(|| {
+                    path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_string()
+                });
                 sessions.push(SessionFile { id, path });
             }
         }

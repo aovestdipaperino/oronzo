@@ -48,6 +48,7 @@ pub fn run(_args: &[String]) {
 }
 
 use chrono::{DateTime, Utc};
+use crate::sessions::{self, SessionFile};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -482,6 +483,18 @@ fn render_tool_result(content: &ToolResultContent, is_error: bool, args: &Args) 
     out
 }
 
+pub fn looks_like_uuid_prefix(s: &str) -> bool {
+    if s.len() < 8 { return false; }
+    s.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+}
+
+pub fn resolve_uuid_prefix(claude_dir: &Path, prefix: &str) -> Vec<SessionFile> {
+    sessions::discover(claude_dir)
+        .into_iter()
+        .filter(|s| s.id.starts_with(prefix))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -796,5 +809,30 @@ mod tests {
         assert!(!md.contains("Subagent done"));
         assert!(!md.contains("### 🤖 Subagent task"));
         assert!(!md.contains("### ← Resuming main thread"));
+    }
+
+    #[test]
+    fn looks_like_uuid_prefix_recognizes_hex_and_dashes() {
+        assert!(looks_like_uuid_prefix("11111111"));
+        assert!(looks_like_uuid_prefix("11111111-1111"));
+        assert!(looks_like_uuid_prefix("aabbccdd-eeff-1234-5678-90abcdef1234"));
+        assert!(!looks_like_uuid_prefix("1234567"));            // too short
+        assert!(!looks_like_uuid_prefix("not a uuid"));         // has space
+        assert!(!looks_like_uuid_prefix("11111111-zzzz"));      // non-hex
+    }
+
+    #[test]
+    fn resolve_uuid_prefix_finds_exact_match() {
+        let fixtures_root = fixture("tests/fixtures/mdexport");
+        let matches = resolve_uuid_prefix(&fixtures_root, "11111111");
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].path.to_string_lossy().ends_with("sess_with_tools.jsonl"));
+    }
+
+    #[test]
+    fn resolve_uuid_prefix_no_match_returns_empty() {
+        let fixtures_root = fixture("tests/fixtures/mdexport");
+        let matches = resolve_uuid_prefix(&fixtures_root, "99999999");
+        assert!(matches.is_empty());
     }
 }
