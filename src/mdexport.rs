@@ -42,9 +42,59 @@ pub fn parse_args(args: &[String]) -> Result<Args, String> {
     Ok(out)
 }
 
-pub fn run(_args: &[String]) {
-    eprintln!("mdexport: not yet implemented");
-    std::process::exit(2);
+pub fn run(args: &[String]) {
+    let parsed = match parse_args(args) {
+        Ok(a) => a,
+        Err(e) if e == "__help__" => {
+            eprint!("{}", help());
+            return;
+        }
+        Err(e) => {
+            eprintln!("mdexport: {e}\n\n{}", help());
+            std::process::exit(2);
+        }
+    };
+
+    let selected = match select_session(&parsed) {
+        Ok(Some(f)) => f,
+        Ok(None) => return,
+        Err(msg) => {
+            eprintln!("mdexport: {msg}");
+            std::process::exit(1);
+        }
+    };
+
+    let session = match parse_session(&selected.path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("mdexport: cannot read {}: {e}", selected.path.display());
+            std::process::exit(1);
+        }
+    };
+
+    print!("{}", render(&session, &parsed));
+}
+
+pub fn help() -> String {
+    "\
+oronzo mdexport: Export a Claude Code session as Markdown.
+
+Usage:
+  oronzo mdexport [query] [flags]
+
+Selection:
+  (no query)         Pick from the 30 most-recent sessions.
+  <uuid-prefix>      ≥8 hex/dash chars → direct match (or picker if ambiguous).
+  <words>            BM25 search; pick from up to top 30 results.
+
+Flags:
+  --no-tools         Drop tool_use and tool_result blocks.
+  --no-thinking      Drop thinking blocks.
+  --no-sidechains    Drop subagent entries.
+  --no-images        Replace image blocks with a placeholder.
+  -h, --help         Show this help.
+"
+    .to_string()
 }
 
 use chrono::{DateTime, Utc};
