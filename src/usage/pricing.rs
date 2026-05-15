@@ -83,6 +83,23 @@ impl Pricing {
         self.models.get(model)
     }
 
+    pub fn compute_cost(
+        &self,
+        model: &str,
+        input: u64,
+        output: u64,
+        cache_creation: u64,
+        cache_read: u64,
+    ) -> Option<f64> {
+        let m = self.lookup(model)?;
+        Some(
+            (input as f64) * m.input
+                + (output as f64) * m.output
+                + (cache_creation as f64) * m.cache_creation
+                + (cache_read as f64) * m.cache_read,
+        )
+    }
+
     pub fn load(offline: bool) -> Self {
         if offline {
             return Pricing::bundled();
@@ -127,5 +144,24 @@ mod tests {
     fn load_offline_returns_bundled() {
         let p = Pricing::load(true);
         assert!(p.lookup("claude-sonnet-4-6").is_some());
+    }
+
+    #[test]
+    fn compute_cost_multiplies_each_token_class() {
+        let p = Pricing::bundled();
+        let cost = p.compute_cost("claude-sonnet-4-6", 1000, 500, 200, 100);
+        // input: 1000 * 0.000003 = 0.003
+        // output: 500 * 0.000015 = 0.0075
+        // cache_creation: 200 * 0.00000375 = 0.00075
+        // cache_read: 100 * 0.0000003 = 0.00003
+        // total = 0.01128
+        let expected = 0.01128;
+        assert!((cost.unwrap() - expected).abs() < 1e-9, "got {:?}", cost);
+    }
+
+    #[test]
+    fn compute_cost_returns_none_for_unknown_model() {
+        let p = Pricing::bundled();
+        assert!(p.compute_cost("not-a-model", 1, 1, 1, 1).is_none());
     }
 }
