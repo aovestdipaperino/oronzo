@@ -52,6 +52,7 @@ use crate::sessions::{self, SessionFile};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
+use std::io::Write;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -642,6 +643,25 @@ pub fn rank_with_query(claude_dir: &Path, query: &str) -> Vec<SessionInfo> {
     ranked
 }
 
+pub fn parse_selection(input: &str, count: usize) -> Option<usize> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() { return None; }
+    match trimmed.parse::<usize>() {
+        Ok(n) if n >= 1 && n <= count => Some(n - 1),
+        _ => None,
+    }
+}
+
+pub fn prompt_selection(count: usize) -> Option<usize> {
+    eprint!("Select number (Enter to cancel): ");
+    let _ = std::io::stderr().flush();
+    let mut input = String::new();
+    if std::io::stdin().read_line(&mut input).is_err() {
+        return None;
+    }
+    parse_selection(&input, count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1031,5 +1051,19 @@ mod tests {
         assert!(!infos.is_empty());
         assert_eq!(infos[0].id, "11111111-1111-1111-1111-111111111111");
         assert!(infos[0].score.unwrap() > 0.0);
+    }
+
+    #[test]
+    fn parse_selection_valid_returns_index() {
+        assert_eq!(parse_selection("1", 5), Some(0));
+        assert_eq!(parse_selection("5", 5), Some(4));
+    }
+
+    #[test]
+    fn parse_selection_invalid_returns_none() {
+        assert_eq!(parse_selection("", 5), None);
+        assert_eq!(parse_selection("0", 5), None);
+        assert_eq!(parse_selection("6", 5), None);
+        assert_eq!(parse_selection("abc", 5), None);
     }
 }
