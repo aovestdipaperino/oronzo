@@ -5,8 +5,10 @@ use std::process;
 use std::time::SystemTime;
 
 mod mv;
+mod sessions;
 mod switch;
 mod upgrade;
+mod usage;
 
 const LOGO: &str = include_str!(concat!(env!("OUT_DIR"), "/logo.ansi"));
 
