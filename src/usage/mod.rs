@@ -52,9 +52,9 @@ pub fn run(argv: &[String]) {
     };
 
     let report = if parsed.breakdown {
-        aggregate::apply_breakdown(base, filtered.clone(), &parsed)
+        aggregate::apply_breakdown(base, filtered.clone(), &parsed, &pricing)
     } else if parsed.instances {
-        aggregate::apply_instances(base, filtered, &parsed)
+        aggregate::apply_instances(base, filtered, &parsed, &pricing)
     } else {
         base
     };

@@ -37,7 +37,7 @@ pub struct UsageArgs {
     pub offline: bool,
     pub debug: bool,
     pub active: bool,
-    pub recent: usize,
+    pub recent: Option<usize>,
 }
 
 impl Default for UsageArgs {
@@ -54,7 +54,7 @@ impl Default for UsageArgs {
             offline: false,
             debug: false,
             active: false,
-            recent: 10,
+            recent: None,
         }
     }
 }
@@ -114,7 +114,7 @@ pub fn parse(args: &[String]) -> Result<UsageArgs, String> {
             "--active" => { out.active = true; i += 1; }
             "--recent" => {
                 let v = args.get(i + 1).ok_or("--recent requires a count")?;
-                out.recent = v.parse().map_err(|_| format!("bad --recent: {v}"))?;
+                out.recent = Some(v.parse().map_err(|_| format!("bad --recent: {v}"))?);
                 i += 2;
             }
             _ => return Err(format!("unknown flag: {a}")),
@@ -129,7 +129,7 @@ pub fn parse(args: &[String]) -> Result<UsageArgs, String> {
     if out.active && out.report != Report::Blocks {
         return Err("--active is only valid for the blocks report".into());
     }
-    if out.recent != 10 && out.report != Report::Blocks {
+    if out.recent.is_some() && out.report != Report::Blocks {
         return Err("--recent is only valid for the blocks report".into());
     }
     Ok(out)
@@ -232,7 +232,13 @@ mod tests {
     fn parses_blocks_specific_flags() {
         let a = parse(&argv(&["blocks", "--active", "--recent", "5"])).unwrap();
         assert!(a.active);
-        assert_eq!(a.recent, 5);
+        assert_eq!(a.recent, Some(5));
+    }
+
+    #[test]
+    fn rejects_recent_with_non_blocks() {
+        assert!(parse(&argv(&["session", "--recent", "10"])).is_err());
+        assert!(parse(&argv(&["daily", "--recent", "5"])).is_err());
     }
 
     #[test]

@@ -243,7 +243,8 @@ pub fn blocks_filter(report: ReportData, args: &UsageArgs) -> ReportData {
     let active: Vec<Bucket> = buckets.iter().filter(|b| block_is_active(b, now)).cloned().collect();
     let mut closed: Vec<Bucket> = buckets.into_iter().filter(|b| !block_is_active(b, now)).collect();
     closed.sort_by_key(|b| b.first);
-    let tail_start = closed.len().saturating_sub(args.recent);
+    let recent = args.recent.unwrap_or(10);
+    let tail_start = closed.len().saturating_sub(recent);
     let kept_closed: Vec<Bucket> = closed.into_iter().skip(tail_start).collect();
     let mut out = kept_closed;
     out.extend(active);
@@ -261,11 +262,10 @@ fn label_for(report_kind: &ReportKind, tz: &ActiveTz, ts: DateTime<Utc>) -> Stri
     }
 }
 
-pub fn apply_breakdown(report: ReportData, rows: Vec<UsageRow>, args: &UsageArgs) -> ReportData {
+pub fn apply_breakdown(report: ReportData, rows: Vec<UsageRow>, args: &UsageArgs, pricing: &Pricing) -> ReportData {
     if !args.breakdown {
         return report;
     }
-    let pricing = Pricing::load(args.offline);
     let mut acc: BTreeMap<(String, String), Acc> = BTreeMap::new();
     for r in rows {
         let label = label_for(&report.kind, &args.timezone, r.timestamp);
@@ -274,7 +274,7 @@ pub fn apply_breakdown(report: ReportData, rows: Vec<UsageRow>, args: &UsageArgs
         if entry.model.is_none() {
             entry.model = Some(r.model.clone());
         }
-        entry.add(&r, &pricing);
+        entry.add(&r, pricing);
     }
     let buckets = acc
         .into_iter()
@@ -283,11 +283,10 @@ pub fn apply_breakdown(report: ReportData, rows: Vec<UsageRow>, args: &UsageArgs
     ReportData { kind: report.kind, buckets }
 }
 
-pub fn apply_instances(report: ReportData, rows: Vec<UsageRow>, args: &UsageArgs) -> ReportData {
+pub fn apply_instances(report: ReportData, rows: Vec<UsageRow>, args: &UsageArgs, pricing: &Pricing) -> ReportData {
     if !args.instances {
         return report;
     }
-    let pricing = Pricing::load(args.offline);
     let mut acc: BTreeMap<(String, String), Acc> = BTreeMap::new();
     for r in rows {
         let label = label_for(&report.kind, &args.timezone, r.timestamp);
@@ -296,7 +295,7 @@ pub fn apply_instances(report: ReportData, rows: Vec<UsageRow>, args: &UsageArgs
         if entry.project.is_none() {
             entry.project = Some(r.project.clone());
         }
-        entry.add(&r, &pricing);
+        entry.add(&r, pricing);
     }
     let buckets = acc
         .into_iter()
@@ -485,7 +484,7 @@ mod tests {
     fn blocks_recent_n_caps_history() {
         let mut args = UsageArgs::default();
         args.timezone = ActiveTz::Named(chrono_tz::UTC);
-        args.recent = 2;
+        args.recent = Some(2);
         // Construct four windows by spacing rows far apart.
         let rows = vec![
             row("2026-01-01T10:00:00Z", "/p"),
@@ -503,13 +502,12 @@ mod tests {
         let mut args = UsageArgs::default();
         args.timezone = ActiveTz::Named(chrono_tz::UTC);
         args.breakdown = true;
-        args.offline = true;
         let rows = vec![
             { let mut r = row("2026-05-07T10:00:00Z","/p"); r.model="claude-sonnet-4-6".into(); r },
             { let mut r = row("2026-05-07T11:00:00Z","/p"); r.model="claude-haiku-4-5-20251001".into(); r },
         ];
         let report = aggregate_daily(rows.clone(), &args, &crate::usage::pricing::Pricing::bundled());
-        let expanded = apply_breakdown(report, rows, &args);
+        let expanded = apply_breakdown(report, rows, &args, &crate::usage::pricing::Pricing::bundled());
         assert_eq!(expanded.buckets.len(), 2);
         let models: std::collections::HashSet<_> =
             expanded.buckets.iter().filter_map(|b| b.model.as_deref()).collect();
@@ -522,13 +520,12 @@ mod tests {
         let mut args = UsageArgs::default();
         args.timezone = ActiveTz::Named(chrono_tz::UTC);
         args.instances = true;
-        args.offline = true;
         let rows = vec![
             row("2026-05-07T10:00:00Z", "/proj/a"),
             row("2026-05-07T11:00:00Z", "/proj/b"),
         ];
         let report = aggregate_daily(rows.clone(), &args, &crate::usage::pricing::Pricing::bundled());
-        let expanded = apply_instances(report, rows, &args);
+        let expanded = apply_instances(report, rows, &args, &crate::usage::pricing::Pricing::bundled());
         assert_eq!(expanded.buckets.len(), 2);
         let projects: std::collections::HashSet<_> =
             expanded.buckets.iter().filter_map(|b| b.project.as_deref()).collect();
