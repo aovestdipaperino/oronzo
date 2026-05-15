@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelPricing {
@@ -33,20 +33,16 @@ fn cache_path() -> PathBuf {
 }
 
 fn mtime_is_today(path: &std::path::Path) -> bool {
+    use chrono::{DateTime, Local};
     let Ok(meta) = fs::metadata(path) else {
         return false;
     };
     let Ok(mtime) = meta.modified() else {
         return false;
     };
-    let Ok(mtime_secs) = mtime.duration_since(UNIX_EPOCH) else {
-        return false;
-    };
-    let Ok(now_secs) = SystemTime::now().duration_since(UNIX_EPOCH) else {
-        return false;
-    };
-    const ONE_DAY: u64 = 86_400;
-    (now_secs.as_secs() / ONE_DAY) == (mtime_secs.as_secs() / ONE_DAY)
+    let mtime_local: DateTime<Local> = mtime.into();
+    let now_local: DateTime<Local> = Local::now();
+    mtime_local.date_naive() == now_local.date_naive()
 }
 
 fn parse_str(s: &str) -> Pricing {
