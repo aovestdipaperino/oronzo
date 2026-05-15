@@ -12,7 +12,7 @@ mod usage;
 
 const LOGO: &str = include_str!(concat!(env!("OUT_DIR"), "/logo.ansi"));
 
-fn usage_text() -> String {
+fn help_text() -> String {
     format!(
         "\
 oronzo {}: A toolkit for Claude Code sessions.
@@ -36,8 +36,8 @@ Options:
     )
 }
 
-fn usage() -> String {
-    let text = usage_text();
+fn help() -> String {
+    let text = help_text();
     let text_lines: Vec<&str> = text.lines().collect();
     let logo_lines: Vec<&str> = LOGO.lines().collect();
     let max_rows = text_lines.len().max(logo_lines.len());
@@ -68,7 +68,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 || args[1] == "-h" || args[1] == "--help" {
-        eprint!("{}", usage());
+        eprint!("{}", help());
         process::exit(0);
     }
 
@@ -91,7 +91,7 @@ fn main() {
         }
         other => {
             eprintln!("Unknown command: {other}\n");
-            eprint!("{}", usage_text());
+            eprint!("{}", help_text());
             process::exit(1);
         }
     }
