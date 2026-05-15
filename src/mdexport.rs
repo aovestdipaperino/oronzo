@@ -49,6 +49,7 @@ pub fn run(_args: &[String]) {
 
 use chrono::{DateTime, Utc};
 use crate::sessions::{self, SessionFile};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -569,6 +570,78 @@ pub fn format_picker_line(idx: usize, info: &SessionInfo, home: &str) -> String 
     }
 }
 
+const BM25_K1: f64 = 1.5;
+const BM25_B: f64 = 0.75;
+
+fn tokenize(text: &str) -> Vec<String> {
+    text.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+fn score_bm25(query: &str, corpus: &[String]) -> Vec<f64> {
+    let n = corpus.len() as f64;
+    let tokenized: Vec<Vec<String>> = corpus.iter().map(|d| tokenize(d)).collect();
+    let doc_lens: Vec<f64> = tokenized.iter().map(|t| t.len() as f64).collect();
+    let avgdl = if tokenized.is_empty() { 1.0 } else { doc_lens.iter().sum::<f64>() / n };
+    let mut df: HashMap<String, f64> = HashMap::new();
+    for doc in &tokenized {
+        let unique: std::collections::HashSet<&String> = doc.iter().collect();
+        for t in unique { *df.entry(t.clone()).or_default() += 1.0; }
+    }
+    let qtoks = tokenize(query);
+    tokenized
+        .iter()
+        .enumerate()
+        .map(|(i, doc)| {
+            let dl = doc_lens[i];
+            let mut tf: HashMap<&str, f64> = HashMap::new();
+            for t in doc { *tf.entry(t.as_str()).or_default() += 1.0; }
+            qtoks.iter().fold(0.0, |s, q| {
+                let dfq = df.get(q.as_str()).copied().unwrap_or(0.0);
+                let tfq = tf.get(q.as_str()).copied().unwrap_or(0.0);
+                let idf = ((n - dfq + 0.5) / (dfq + 0.5) + 1.0).ln();
+                let comp = (tfq * (BM25_K1 + 1.0)) / (tfq + BM25_K1 * (1.0 - BM25_B + BM25_B * dl / avgdl));
+                s + idf * comp
+            })
+        })
+        .collect()
+}
+
+fn collect_text(s: &Session) -> String {
+    let mut buf = String::new();
+    for e in &s.entries {
+        if e.is_meta { continue; }
+        for b in &e.blocks {
+            if let Block::Text(t) = b {
+                buf.push_str(t);
+                buf.push(' ');
+            }
+        }
+    }
+    buf
+}
+
+pub fn rank_with_query(claude_dir: &Path, query: &str) -> Vec<SessionInfo> {
+    let infos = list_recent_sessions(claude_dir, usize::MAX);
+    let corpus: Vec<String> = infos
+        .iter()
+        .map(|i| parse_session(&i.path).map(|s| collect_text(&s)).unwrap_or_default())
+        .collect();
+    let scores = score_bm25(query, &corpus);
+    let mut ranked: Vec<SessionInfo> = infos
+        .into_iter()
+        .zip(scores)
+        .filter(|(_, sc)| *sc > 0.0)
+        .map(|(mut info, sc)| { info.score = Some(sc); info })
+        .collect();
+    ranked.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    ranked.truncate(30);
+    ranked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -949,5 +1022,14 @@ mod tests {
         let line = format_picker_line(2, &info, "");
         assert!(!line.contains("["));
         assert!(line.contains("do thing"));
+    }
+
+    #[test]
+    fn rank_with_query_orders_by_relevance() {
+        let fixtures_root = fixture("tests/fixtures/mdexport");
+        let infos = rank_with_query(&fixtures_root, "list the files");
+        assert!(!infos.is_empty());
+        assert_eq!(infos[0].id, "11111111-1111-1111-1111-111111111111");
+        assert!(infos[0].score.unwrap() > 0.0);
     }
 }
