@@ -165,6 +165,69 @@ pub fn aggregate_session(rows: Vec<UsageRow>, _args: &UsageArgs, pricing: &Prici
     ReportData { kind: ReportKind::Session, buckets }
 }
 
+use chrono::Duration;
+use chrono::Timelike;
+
+fn floor_to_hour(ts: DateTime<Utc>) -> DateTime<Utc> {
+    ts.with_minute(0).unwrap().with_second(0).unwrap().with_nanosecond(0).unwrap()
+}
+
+pub fn aggregate_blocks(mut rows: Vec<UsageRow>, _args: &UsageArgs, pricing: &Pricing) -> ReportData {
+    rows.sort_by_key(|r| r.timestamp);
+    let window_len = Duration::hours(5);
+
+    let mut buckets: Vec<Bucket> = Vec::new();
+    let mut current: Option<(Acc, DateTime<Utc>, DateTime<Utc>)> = None;
+    // (accumulator, window_start, last_row_timestamp)
+
+    for r in rows {
+        match &mut current {
+            None => {
+                let start = floor_to_hour(r.timestamp);
+                let mut a = Acc::default();
+                a.add(&r, pricing);
+                current = Some((a, start, r.timestamp));
+            }
+            Some((acc, start, last)) => {
+                let gap = r.timestamp - *last;
+                let duration_full = r.timestamp - *start >= window_len;
+                if gap >= window_len || duration_full {
+                    // close current
+                    let started = *start;
+                    let ended = *last;
+                    let mut bucket = std::mem::take(acc).into_bucket(format!(
+                        "{} → {}",
+                        started.to_rfc3339(),
+                        ended.to_rfc3339()
+                    ));
+                    bucket.first = started;
+                    bucket.last = ended;
+                    buckets.push(bucket);
+                    // open new
+                    let new_start = floor_to_hour(r.timestamp);
+                    let mut a = Acc::default();
+                    a.add(&r, pricing);
+                    current = Some((a, new_start, r.timestamp));
+                } else {
+                    acc.add(&r, pricing);
+                    *last = r.timestamp;
+                }
+            }
+        }
+    }
+    if let Some((acc, start, last)) = current {
+        let mut bucket = acc.into_bucket(format!(
+            "{} → {}",
+            start.to_rfc3339(),
+            last.to_rfc3339()
+        ));
+        bucket.first = start;
+        bucket.last = last;
+        buckets.push(bucket);
+    }
+    ReportData { kind: ReportKind::Blocks, buckets }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,5 +344,43 @@ mod tests {
         assert_eq!(s1.input, 2);
         assert_eq!(s1.first.to_rfc3339(), "2026-05-07T10:00:00+00:00");
         assert_eq!(s1.last.to_rfc3339(),  "2026-05-07T11:00:00+00:00");
+    }
+
+    #[test]
+    fn blocks_opens_one_window_within_five_hours() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        let rows = vec![
+            row("2026-05-07T10:15:00Z", "/p"),
+            row("2026-05-07T13:00:00Z", "/p"),
+        ];
+        let report = aggregate_blocks(rows, &args, &crate::usage::pricing::Pricing::bundled());
+        assert_eq!(report.buckets.len(), 1);
+    }
+
+    #[test]
+    fn blocks_closes_on_five_hour_gap() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        let rows = vec![
+            row("2026-05-07T10:00:00Z", "/p"),
+            row("2026-05-07T15:30:00Z", "/p"), // 5h30m later
+        ];
+        let report = aggregate_blocks(rows, &args, &crate::usage::pricing::Pricing::bundled());
+        assert_eq!(report.buckets.len(), 2);
+    }
+
+    #[test]
+    fn blocks_closes_on_window_duration() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        let rows = vec![
+            row("2026-05-07T10:00:00Z", "/p"),
+            row("2026-05-07T11:00:00Z", "/p"),
+            row("2026-05-07T14:30:00Z", "/p"),
+            row("2026-05-07T15:30:00Z", "/p"), // floor 10:00 + 5h ends at 15:00 → new window
+        ];
+        let report = aggregate_blocks(rows, &args, &crate::usage::pricing::Pricing::bundled());
+        assert_eq!(report.buckets.len(), 2);
     }
 }
