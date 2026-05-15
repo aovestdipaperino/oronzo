@@ -1,5 +1,9 @@
 use crate::usage::args::UsageArgs;
 use crate::usage::parse::UsageRow;
+use crate::usage::pricing::Pricing;
+use chrono::{DateTime, Utc};
+use serde::Serialize;
+use std::collections::BTreeMap;
 
 pub fn filter(rows: Vec<UsageRow>, args: &UsageArgs) -> Vec<UsageRow> {
     let tz = &args.timezone;
@@ -28,6 +32,91 @@ pub fn filter(rows: Vec<UsageRow>, args: &UsageArgs) -> Vec<UsageRow> {
             true
         })
         .collect()
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub enum ReportKind { Daily, Weekly, Monthly, Session, Blocks }
+
+#[derive(Debug, Serialize, Clone)]
+pub struct Bucket {
+    pub label: String,
+    pub project: Option<String>,
+    pub model: Option<String>,
+    pub input: u64,
+    pub output: u64,
+    pub cache_creation: u64,
+    pub cache_read: u64,
+    pub cost_usd: Option<f64>,
+    pub first: DateTime<Utc>,
+    pub last: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReportData {
+    pub kind: ReportKind,
+    pub buckets: Vec<Bucket>,
+}
+
+#[derive(Default)]
+struct Acc {
+    project: Option<String>,
+    model: Option<String>,
+    input: u64,
+    output: u64,
+    cache_creation: u64,
+    cache_read: u64,
+    per_model_cost: f64,
+    cost_known: bool,
+    first: Option<DateTime<Utc>>,
+    last: Option<DateTime<Utc>>,
+}
+
+impl Acc {
+    fn add(&mut self, r: &UsageRow, pricing: &Pricing) {
+        self.input += r.input_tokens;
+        self.output += r.output_tokens;
+        self.cache_creation += r.cache_creation_tokens;
+        self.cache_read += r.cache_read_tokens;
+        if let Some(c) = pricing.compute_cost(
+            &r.model,
+            r.input_tokens,
+            r.output_tokens,
+            r.cache_creation_tokens,
+            r.cache_read_tokens,
+        ) {
+            self.per_model_cost += c;
+            self.cost_known = true;
+        }
+        self.first = Some(self.first.map_or(r.timestamp, |t| t.min(r.timestamp)));
+        self.last = Some(self.last.map_or(r.timestamp, |t| t.max(r.timestamp)));
+    }
+
+    fn into_bucket(self, label: String) -> Bucket {
+        Bucket {
+            label,
+            project: self.project,
+            model: self.model,
+            input: self.input,
+            output: self.output,
+            cache_creation: self.cache_creation,
+            cache_read: self.cache_read,
+            cost_usd: if self.cost_known { Some(self.per_model_cost) } else { None },
+            first: self.first.unwrap_or_else(Utc::now),
+            last: self.last.unwrap_or_else(Utc::now),
+        }
+    }
+}
+
+pub fn aggregate_daily(rows: Vec<UsageRow>, args: &UsageArgs, pricing: &Pricing) -> ReportData {
+    let mut acc: BTreeMap<String, Acc> = BTreeMap::new();
+    for r in rows {
+        let label = args.timezone.ymd_label(r.timestamp);
+        acc.entry(label).or_default().add(&r, pricing);
+    }
+    ReportData {
+        kind: ReportKind::Daily,
+        buckets: acc.into_iter().map(|(label, a)| a.into_bucket(label)).collect(),
+    }
 }
 
 #[cfg(test)]
@@ -78,5 +167,22 @@ mod tests {
         let filtered = filter(rows, &args);
         assert_eq!(filtered.len(), 1);
         assert!(filtered[0].project.contains("front"));
+    }
+
+    #[test]
+    fn daily_buckets_rows_by_calendar_day() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        let rows = vec![
+            row("2026-05-07T10:00:00Z", "/p"),
+            row("2026-05-07T12:00:00Z", "/p"),
+            row("2026-05-08T01:00:00Z", "/p"),
+        ];
+        let report = aggregate_daily(rows, &args, &crate::usage::pricing::Pricing::bundled());
+        assert_eq!(report.buckets.len(), 2);
+        assert_eq!(report.buckets[0].label, "2026-05-07");
+        assert_eq!(report.buckets[0].input, 2);
+        assert_eq!(report.buckets[1].label, "2026-05-08");
+        assert_eq!(report.buckets[1].input, 1);
     }
 }
