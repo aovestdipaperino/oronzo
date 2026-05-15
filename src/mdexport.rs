@@ -286,6 +286,58 @@ pub fn parse_session(path: &Path) -> Result<Session, std::io::Error> {
     })
 }
 
+pub fn render(session: &Session, args: &Args) -> String {
+    let mut out = String::new();
+
+    // Header table.
+    out.push_str(&format!("# Session {}\n\n", session.meta.id));
+    out.push_str(&format!("| Project | {} |\n", session.meta.project));
+    out.push_str("|---|---|\n");
+    out.push_str(&format!("| Started | {} |\n", session.meta.started.to_rfc3339()));
+    out.push_str(&format!("| Ended | {} |\n", session.meta.ended.to_rfc3339()));
+    out.push_str(&format!("| Messages | {} |\n", session.meta.message_count));
+    out.push_str(&format!("| Models | {} |\n", session.meta.models.join(", ")));
+    if let Some(b) = &session.meta.git_branch {
+        out.push_str(&format!("| Git branch | {} |\n", b));
+    }
+    out.push_str("\n---\n\n");
+
+    // Entries with sidechain bracketing.
+    let mut in_sidechain = false;
+    for entry in &session.entries {
+        if entry.is_meta { continue; }
+        if entry.is_sidechain && !args.sidechains { continue; }
+
+        if args.sidechains {
+            if entry.is_sidechain && !in_sidechain {
+                out.push_str("### 🤖 Subagent task\n\n");
+                in_sidechain = true;
+            } else if !entry.is_sidechain && in_sidechain {
+                out.push_str("### ← Resuming main thread\n\n");
+                in_sidechain = false;
+            }
+        }
+
+        let role = match entry.role { Role::User => "User", Role::Assistant => "Assistant" };
+        out.push_str(&format!(
+            "## {} · {}\n\n",
+            role,
+            entry.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
+
+        for block in &entry.blocks {
+            out.push_str(&render_block(block, args));
+        }
+        out.push('\n');
+    }
+
+    if in_sidechain {
+        out.push_str("### ← Resuming main thread\n\n");
+    }
+
+    out
+}
+
 pub fn lang_for_path(path: &str) -> &'static str {
     let ext = std::path::Path::new(path)
         .extension()
@@ -697,5 +749,52 @@ mod tests {
         let br = Block::ToolResult { content: ToolResultContent::Text("x".into()), is_error: false };
         assert!(render_block(&bu, &a).is_empty());
         assert!(render_block(&br, &a).is_empty());
+    }
+
+    #[test]
+    fn render_emits_header_with_id_and_project() {
+        let s = parse_session(&fixture("tests/fixtures/mdexport/proj_a/sess_with_tools.jsonl")).unwrap();
+        let md = render(&s, &Args::default());
+        assert!(md.starts_with("# Session 11111111-1111-1111-1111-111111111111"));
+        assert!(md.contains("| Project | /tmp/proj_a |"));
+        assert!(md.contains("| Messages | 4 |"));
+        assert!(md.contains("| Git branch | main |"));
+        assert!(md.contains("| Models | claude-sonnet-4-6 |"));
+    }
+
+    #[test]
+    fn render_omits_git_branch_when_absent() {
+        let s = parse_session(&fixture("tests/fixtures/mdexport/proj_a/sess_with_thinking.jsonl")).unwrap();
+        let md = render(&s, &Args::default());
+        assert!(!md.contains("| Git branch |"));
+    }
+
+    #[test]
+    fn render_skips_meta_entries() {
+        let s = parse_session(&fixture("tests/fixtures/mdexport/proj_a/sess_meta_only.jsonl")).unwrap();
+        let md = render(&s, &Args::default());
+        assert!(md.contains("# Session 66666666"));
+        assert!(!md.contains("## User"));
+        assert!(!md.contains("## Assistant"));
+    }
+
+    #[test]
+    fn render_brackets_sidechain_spans() {
+        let s = parse_session(&fixture("tests/fixtures/mdexport/proj_a/sess_with_sidechain.jsonl")).unwrap();
+        let md = render(&s, &Args::default());
+        assert!(md.contains("### 🤖 Subagent task"));
+        assert!(md.contains("### ← Resuming main thread"));
+    }
+
+    #[test]
+    fn render_drops_sidechain_entries_when_disabled() {
+        let s = parse_session(&fixture("tests/fixtures/mdexport/proj_a/sess_with_sidechain.jsonl")).unwrap();
+        let mut a = Args::default();
+        a.sidechains = false;
+        let md = render(&s, &a);
+        assert!(!md.contains("subagent task"));
+        assert!(!md.contains("Subagent done"));
+        assert!(!md.contains("### 🤖 Subagent task"));
+        assert!(!md.contains("### ← Resuming main thread"));
     }
 }
