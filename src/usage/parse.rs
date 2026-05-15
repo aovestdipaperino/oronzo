@@ -90,6 +90,30 @@ pub fn parse_all(claude_dir: &Path) -> Vec<UsageRow> {
     rows
 }
 
+use crate::usage::cache::{file_mtime, Cache, Entry};
+
+pub fn parse_all_cached(claude_dir: &Path, cache: &mut Cache) -> Vec<UsageRow> {
+    let files = sessions::discover(claude_dir);
+    let mut rows = Vec::new();
+    let mut dirty = false;
+    for sf in files {
+        let key = sf.path.to_string_lossy().to_string();
+        let mtime = file_mtime(&sf.path);
+        if let Some(entry) = cache.get(&key, mtime) {
+            rows.extend(entry.rows.clone());
+            continue;
+        }
+        let fresh = extract_rows(&sf.path);
+        cache.set(key, Entry { mtime, rows: fresh.clone() });
+        rows.extend(fresh);
+        dirty = true;
+    }
+    if dirty {
+        cache.save();
+    }
+    rows
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,5 +154,15 @@ mod tests {
             rows.iter().map(|r| r.project.as_str()).collect();
         assert!(projects.contains("/tmp/proj_a"));
         assert!(projects.contains("/tmp/proj_b"));
+    }
+
+    #[test]
+    fn parse_all_cached_returns_same_rows_as_parse_all() {
+        use crate::usage::cache::Cache;
+        let dir = fixture("tests/fixtures/usage");
+        let baseline = parse_all(&dir);
+        let mut cache = Cache::default();
+        let cached = parse_all_cached(&dir, &mut cache);
+        assert_eq!(cached.len(), baseline.len());
     }
 }
