@@ -4,6 +4,7 @@ use std::env;
 use std::process;
 use std::time::SystemTime;
 
+pub mod mdexport;
 pub mod mv;
 pub mod sessions;
 pub mod switch;
@@ -86,6 +87,7 @@ fn main() {
     match args[1].as_str() {
         "search" => cmd_search(&args[2..]),
         "usage" => usage::run(&args[2..]),
+        "mdexport" => mdexport::run(&args[2..]),
         "mv" => mv::run(&args[2..]),
         "upgrade" => upgrade::run(),
         "account-switch" | "account-save" | "account-list" | "account-use" => {
