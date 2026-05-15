@@ -79,6 +79,17 @@ pub fn extract_rows(path: &Path) -> Vec<UsageRow> {
     rows
 }
 
+use crate::sessions;
+
+pub fn parse_all(claude_dir: &Path) -> Vec<UsageRow> {
+    let files = sessions::discover(claude_dir);
+    let mut rows = Vec::new();
+    for sf in files {
+        rows.extend(extract_rows(&sf.path));
+    }
+    rows
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +119,16 @@ mod tests {
     fn skips_user_and_missing_usage() {
         let rows = extract_rows(&fixture("tests/fixtures/usage/proj_a/session_a1.jsonl"));
         assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn parse_all_walks_every_project() {
+        let dir = fixture("tests/fixtures/usage");
+        let rows = parse_all(&dir);
+        assert_eq!(rows.len(), 2);
+        let projects: std::collections::HashSet<&str> =
+            rows.iter().map(|r| r.project.as_str()).collect();
+        assert!(projects.contains("/tmp/proj_a"));
+        assert!(projects.contains("/tmp/proj_b"));
     }
 }
