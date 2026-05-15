@@ -49,6 +49,7 @@ pub fn run(_args: &[String]) {
 
 use chrono::{DateTime, Utc};
 use crate::sessions::{self, SessionFile};
+use dirs;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -660,6 +661,75 @@ pub fn prompt_selection(count: usize) -> Option<usize> {
         return None;
     }
     parse_selection(&input, count)
+}
+
+pub fn select_session(args: &Args) -> Result<Option<SessionFile>, String> {
+    let claude_dir = sessions::claude_dir();
+    if !claude_dir.exists() {
+        return Err(format!("Claude sessions directory not found at {}", claude_dir.display()));
+    }
+
+    let home = dirs::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    match &args.query {
+        None => {
+            let infos = list_recent_sessions(&claude_dir, 30);
+            if infos.is_empty() {
+                return Err("no sessions found".into());
+            }
+            Ok(pick_from(&infos, &home))
+        }
+        Some(q) if looks_like_uuid_prefix(q) => {
+            let matches = resolve_uuid_prefix(&claude_dir, q);
+            match matches.len() {
+                0 => Err(format!("no session matches prefix '{q}'")),
+                1 => Ok(Some(matches.into_iter().next().unwrap())),
+                _ => {
+                    let infos: Vec<SessionInfo> = matches
+                        .into_iter()
+                        .filter_map(|sf| {
+                            let mtime = fs::metadata(&sf.path)
+                                .and_then(|m| m.modified())
+                                .ok()
+                                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                                .map(|d| d.as_secs_f64())
+                                .unwrap_or(0.0);
+                            let session = parse_session(&sf.path).ok()?;
+                            let first_msg = first_user_text(&session).unwrap_or_else(|| "(no summary)".into());
+                            Some(SessionInfo {
+                                path: sf.path,
+                                id: sf.id,
+                                project: session.meta.project,
+                                first_msg,
+                                mtime,
+                                score: None,
+                            })
+                        })
+                        .collect();
+                    Ok(pick_from(&infos, &home))
+                }
+            }
+        }
+        Some(q) => {
+            let infos = rank_with_query(&claude_dir, q);
+            if infos.is_empty() {
+                return Err(format!("no results for '{q}'"));
+            }
+            Ok(pick_from(&infos, &home))
+        }
+    }
+}
+
+fn pick_from(infos: &[SessionInfo], home: &str) -> Option<SessionFile> {
+    eprintln!();
+    for (i, info) in infos.iter().enumerate() {
+        eprint!("{}", format_picker_line(i + 1, info, home));
+    }
+    let idx = prompt_selection(infos.len())?;
+    let info = &infos[idx];
+    Some(SessionFile { id: info.id.clone(), path: info.path.clone() })
 }
 
 #[cfg(test)]
