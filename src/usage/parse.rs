@@ -125,7 +125,7 @@ mod tests {
     fn parse_all_walks_every_project() {
         let dir = fixture("tests/fixtures/usage");
         let rows = parse_all(&dir);
-        assert_eq!(rows.len(), 2);
+        assert_eq!(rows.len(), 3);
         let projects: std::collections::HashSet<&str> =
             rows.iter().map(|r| r.project.as_str()).collect();
         assert!(projects.contains("/tmp/proj_a"));
