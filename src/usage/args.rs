@@ -1,1 +1,145 @@
-// placeholder
+use chrono::NaiveDate;
+use chrono_tz::Tz;
+
+#[derive(Debug, PartialEq)]
+pub enum Report {
+    Daily,
+    Weekly,
+    Monthly,
+    Session,
+    Blocks,
+}
+
+#[derive(Debug)]
+pub enum ActiveTz {
+    Named(Tz),
+    Local,
+}
+
+impl PartialEq for ActiveTz {
+    fn eq(&self, other: &Self) -> bool {
+        matches!((self, other), (ActiveTz::Local, ActiveTz::Local))
+            || matches!((self, other),
+                (ActiveTz::Named(a), ActiveTz::Named(b)) if a.name() == b.name())
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct UsageArgs {
+    pub report: Report,
+    pub since: Option<NaiveDate>,
+    pub until: Option<NaiveDate>,
+    pub project: Option<String>,
+    pub breakdown: bool,
+    pub instances: bool,
+    pub timezone: ActiveTz,
+    pub json: bool,
+    pub offline: bool,
+    pub debug: bool,
+    pub active: bool,
+    pub recent: usize,
+}
+
+impl Default for UsageArgs {
+    fn default() -> Self {
+        UsageArgs {
+            report: Report::Daily,
+            since: None,
+            until: None,
+            project: None,
+            breakdown: false,
+            instances: false,
+            timezone: ActiveTz::Local,
+            json: false,
+            offline: false,
+            debug: false,
+            active: false,
+            recent: 10,
+        }
+    }
+}
+
+fn parse_date(s: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(s, "%Y%m%d")
+        .or_else(|_| NaiveDate::parse_from_str(s, "%Y-%m-%d"))
+        .ok()
+}
+
+pub fn parse(args: &[String]) -> Result<UsageArgs, String> {
+    let mut out = UsageArgs::default();
+    let mut i = 0;
+    // First positional (if any) is the report kind.
+    if let Some(first) = args.first() {
+        match first.as_str() {
+            "daily" => { out.report = Report::Daily; i = 1; }
+            "weekly" => { out.report = Report::Weekly; i = 1; }
+            "monthly" => { out.report = Report::Monthly; i = 1; }
+            "session" => { out.report = Report::Session; i = 1; }
+            "blocks" => { out.report = Report::Blocks; i = 1; }
+            s if !s.starts_with('-') => {
+                return Err(format!("unknown report: {s}"));
+            }
+            _ => {}
+        }
+    }
+    while i < args.len() {
+        let a = &args[i];
+        match a.as_str() {
+            "--since" => {
+                let v = args.get(i + 1).ok_or("--since requires a date")?;
+                out.since = parse_date(v).ok_or_else(|| format!("bad --since: {v}"))?.into();
+                i += 2;
+            }
+            "--until" => {
+                let v = args.get(i + 1).ok_or("--until requires a date")?;
+                out.until = parse_date(v).ok_or_else(|| format!("bad --until: {v}"))?.into();
+                i += 2;
+            }
+            _ => {
+                return Err(format!("unknown flag: {a}"));
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn argv(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn empty_args_defaults_to_daily() {
+        let a = parse(&argv(&[])).unwrap();
+        assert_eq!(a.report, Report::Daily);
+    }
+
+    #[test]
+    fn each_report_subcommand_maps() {
+        for (name, kind) in [
+            ("daily", Report::Daily),
+            ("weekly", Report::Weekly),
+            ("monthly", Report::Monthly),
+            ("session", Report::Session),
+            ("blocks", Report::Blocks),
+        ] {
+            let a = parse(&argv(&[name])).unwrap();
+            assert_eq!(a.report, kind);
+        }
+    }
+
+    #[test]
+    fn since_until_parse_both_formats() {
+        let a = parse(&argv(&["daily", "--since", "20260101", "--until", "2026-02-01"])).unwrap();
+        assert_eq!(a.since, NaiveDate::from_ymd_opt(2026, 1, 1));
+        assert_eq!(a.until, NaiveDate::from_ymd_opt(2026, 2, 1));
+    }
+
+    #[test]
+    fn bad_date_errors() {
+        assert!(parse(&argv(&["daily", "--since", "not-a-date"])).is_err());
+    }
+}
