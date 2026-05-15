@@ -316,6 +316,33 @@ pub fn lang_for_path(path: &str) -> &'static str {
     }
 }
 
+pub fn render_block(block: &Block, args: &Args) -> String {
+    match block {
+        Block::Text(s) => {
+            let mut out = String::new();
+            out.push_str(s);
+            out.push('\n');
+            out
+        }
+        Block::Thinking(s) => {
+            if !args.thinking {
+                return String::new();
+            }
+            format!("<details><summary>💭 Thinking</summary>\n\n{s}\n\n</details>\n")
+        }
+        Block::Image { media_type, data } => {
+            if !args.images {
+                return format!("_(image omitted: {}, {} bytes)_\n", media_type, data.len());
+            }
+            format!("![image](data:{};base64,{})\n", media_type, data)
+        }
+        Block::ToolUse { .. } | Block::ToolResult { .. } => {
+            // Filled in by Task 7.
+            String::new()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,5 +482,43 @@ mod tests {
         assert_eq!(lang_for_path("foo.unknownext"), "text");
         assert_eq!(lang_for_path("noext"), "text");
         assert_eq!(lang_for_path("/some/dir/"), "text");
+    }
+
+    #[test]
+    fn render_text_block_emits_text_as_is() {
+        let out = render_block(&Block::Text("hello **world**".into()), &Args::default());
+        assert_eq!(out, "hello **world**\n");
+    }
+
+    #[test]
+    fn render_thinking_uses_details() {
+        let out = render_block(&Block::Thinking("step 1\nstep 2".into()), &Args::default());
+        assert!(out.starts_with("<details><summary>💭 Thinking</summary>"));
+        assert!(out.contains("step 1\nstep 2"));
+        assert!(out.trim_end().ends_with("</details>"));
+    }
+
+    #[test]
+    fn render_thinking_skipped_when_disabled() {
+        let mut a = Args::default();
+        a.thinking = false;
+        let out = render_block(&Block::Thinking("anything".into()), &a);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn render_image_emits_data_url() {
+        let block = Block::Image { media_type: "image/png".into(), data: "iVBORw0KGgo=".into() };
+        let out = render_block(&block, &Args::default());
+        assert_eq!(out.trim(), "![image](data:image/png;base64,iVBORw0KGgo=)");
+    }
+
+    #[test]
+    fn render_image_omitted_when_disabled() {
+        let mut a = Args::default();
+        a.images = false;
+        let block = Block::Image { media_type: "image/png".into(), data: "iVBORw0KGgo=".into() };
+        let out = render_block(&block, &a);
+        assert!(out.contains("(image omitted: image/png"));
     }
 }
