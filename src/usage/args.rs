@@ -95,10 +95,42 @@ pub fn parse(args: &[String]) -> Result<UsageArgs, String> {
                 out.until = parse_date(v).ok_or_else(|| format!("bad --until: {v}"))?.into();
                 i += 2;
             }
-            _ => {
-                return Err(format!("unknown flag: {a}"));
+            "--project" => {
+                let v = args.get(i + 1).ok_or("--project requires a value")?;
+                out.project = Some(v.clone());
+                i += 2;
             }
+            "--breakdown" => { out.breakdown = true; i += 1; }
+            "--instances" => { out.instances = true; i += 1; }
+            "--timezone" => {
+                let v = args.get(i + 1).ok_or("--timezone requires a value")?;
+                let tz: Tz = v.parse().map_err(|_| format!("unknown timezone: {v}"))?;
+                out.timezone = ActiveTz::Named(tz);
+                i += 2;
+            }
+            "--json" => { out.json = true; i += 1; }
+            "--offline" => { out.offline = true; i += 1; }
+            "--debug" => { out.debug = true; i += 1; }
+            "--active" => { out.active = true; i += 1; }
+            "--recent" => {
+                let v = args.get(i + 1).ok_or("--recent requires a count")?;
+                out.recent = v.parse().map_err(|_| format!("bad --recent: {v}"))?;
+                i += 2;
+            }
+            _ => return Err(format!("unknown flag: {a}")),
         }
+    }
+    if out.instances && matches!(out.report, Report::Session | Report::Blocks) {
+        return Err("--instances is only valid for daily/weekly/monthly".into());
+    }
+    if out.breakdown && matches!(out.report, Report::Session | Report::Blocks) {
+        return Err("--breakdown is only valid for daily/weekly/monthly".into());
+    }
+    if out.active && out.report != Report::Blocks {
+        return Err("--active is only valid for the blocks report".into());
+    }
+    if out.recent != 10 && out.report != Report::Blocks {
+        return Err("--recent is only valid for the blocks report".into());
     }
     Ok(out)
 }
@@ -141,5 +173,55 @@ mod tests {
     #[test]
     fn bad_date_errors() {
         assert!(parse(&argv(&["daily", "--since", "not-a-date"])).is_err());
+    }
+
+    #[test]
+    fn parses_string_and_bool_flags() {
+        let a = parse(&argv(&[
+            "monthly",
+            "--project", "frontend",
+            "--breakdown",
+            "--instances",
+            "--json",
+            "--offline",
+            "--debug",
+        ])).unwrap();
+        assert_eq!(a.report, Report::Monthly);
+        assert_eq!(a.project.as_deref(), Some("frontend"));
+        assert!(a.breakdown);
+        assert!(a.instances);
+        assert!(a.json);
+        assert!(a.offline);
+        assert!(a.debug);
+    }
+
+    #[test]
+    fn parses_blocks_specific_flags() {
+        let a = parse(&argv(&["blocks", "--active", "--recent", "5"])).unwrap();
+        assert!(a.active);
+        assert_eq!(a.recent, 5);
+    }
+
+    #[test]
+    fn parses_timezone() {
+        let a = parse(&argv(&["daily", "--timezone", "America/Los_Angeles"])).unwrap();
+        assert_eq!(a.timezone, ActiveTz::Named(chrono_tz::America::Los_Angeles));
+    }
+
+    #[test]
+    fn rejects_instances_with_session_or_blocks() {
+        assert!(parse(&argv(&["session", "--instances"])).is_err());
+        assert!(parse(&argv(&["blocks", "--instances"])).is_err());
+    }
+
+    #[test]
+    fn rejects_breakdown_with_session_or_blocks() {
+        assert!(parse(&argv(&["session", "--breakdown"])).is_err());
+        assert!(parse(&argv(&["blocks", "--breakdown"])).is_err());
+    }
+
+    #[test]
+    fn rejects_active_without_blocks() {
+        assert!(parse(&argv(&["daily", "--active"])).is_err());
     }
 }
