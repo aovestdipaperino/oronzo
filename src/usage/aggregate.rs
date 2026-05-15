@@ -119,6 +119,30 @@ pub fn aggregate_daily(rows: Vec<UsageRow>, args: &UsageArgs, pricing: &Pricing)
     }
 }
 
+pub fn aggregate_weekly(rows: Vec<UsageRow>, args: &UsageArgs, pricing: &Pricing) -> ReportData {
+    let mut acc: BTreeMap<String, Acc> = BTreeMap::new();
+    for r in rows {
+        let label = args.timezone.iso_week_label(r.timestamp);
+        acc.entry(label).or_default().add(&r, pricing);
+    }
+    ReportData {
+        kind: ReportKind::Weekly,
+        buckets: acc.into_iter().map(|(l, a)| a.into_bucket(l)).collect(),
+    }
+}
+
+pub fn aggregate_monthly(rows: Vec<UsageRow>, args: &UsageArgs, pricing: &Pricing) -> ReportData {
+    let mut acc: BTreeMap<String, Acc> = BTreeMap::new();
+    for r in rows {
+        let label = args.timezone.ym_label(r.timestamp);
+        acc.entry(label).or_default().add(&r, pricing);
+    }
+    ReportData {
+        kind: ReportKind::Monthly,
+        buckets: acc.into_iter().map(|(l, a)| a.into_bucket(l)).collect(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,5 +208,37 @@ mod tests {
         assert_eq!(report.buckets[0].input, 2);
         assert_eq!(report.buckets[1].label, "2026-05-08");
         assert_eq!(report.buckets[1].input, 1);
+    }
+
+    #[test]
+    fn weekly_buckets_use_iso_week() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        let rows = vec![
+            row("2026-01-05T10:00:00Z", "/p"),  // ISO week 2026-W02
+            row("2026-01-06T10:00:00Z", "/p"),  // same week
+            row("2026-01-12T10:00:00Z", "/p"),  // 2026-W03
+        ];
+        let report = aggregate_weekly(rows, &args, &crate::usage::pricing::Pricing::bundled());
+        assert_eq!(report.buckets.len(), 2);
+        assert_eq!(report.buckets[0].label, "2026-W02");
+        assert_eq!(report.buckets[0].input, 2);
+        assert_eq!(report.buckets[1].label, "2026-W03");
+    }
+
+    #[test]
+    fn monthly_buckets_by_year_month() {
+        let mut args = UsageArgs::default();
+        args.timezone = ActiveTz::Named(chrono_tz::UTC);
+        let rows = vec![
+            row("2026-04-30T10:00:00Z", "/p"),
+            row("2026-05-01T10:00:00Z", "/p"),
+            row("2026-05-30T10:00:00Z", "/p"),
+        ];
+        let report = aggregate_monthly(rows, &args, &crate::usage::pricing::Pricing::bundled());
+        assert_eq!(report.buckets.len(), 2);
+        assert_eq!(report.buckets[0].label, "2026-04");
+        assert_eq!(report.buckets[1].label, "2026-05");
+        assert_eq!(report.buckets[1].input, 2);
     }
 }
