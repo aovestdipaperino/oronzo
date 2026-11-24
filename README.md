@@ -2,6 +2,8 @@
 
 # oronzo
 
+[![GitHub stars](https://img.shields.io/github/stars/aovestdipaperino/oronzo?logo=github&color=brightgreen)](https://github.com/aovestdipaperino/oronzo/stargazers)
+
 A toolkit for Claude Code sessions. Search, resume, move, and switch accounts — all from one CLI.
 
 ## Requirements
